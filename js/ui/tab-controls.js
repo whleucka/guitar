@@ -148,15 +148,15 @@ export function renderTabViewer(container) {
   let isSolo = false;
 
   /**
-   * Build timelines for all non-drum tracks and configure the player.
+   * Build timelines for all tracks (including drums for backing audio).
    */
   function buildAllTracks() {
     if (!score) return;
     allTrackData = [];
     score.tracks.forEach((t, i) => {
-      if (t.isDrum) return;
       const { timeline, measures } = buildTimeline(score, i);
-      allTrackData.push({ trackIndex: i, timeline, measures });
+      if (timeline.length === 0) return;
+      allTrackData.push({ trackIndex: i, timeline, measures, isDrum: t.isDrum });
     });
   }
 
