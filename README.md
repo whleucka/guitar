@@ -2,10 +2,13 @@
 
 > This is a work in progress.
 
+
 ## Features
 
 - Scale & modes practice
 - Chord practice
 - Tab Viewer (Guitar Pro)
 
-<img width="1275" height="911" alt="image" src="https://github.com/user-attachments/assets/b078b08a-dc28-4a66-8370-66848a6acbac" />
+
+## Screenshots
+<img width="1920" height="1200" alt="image" src="https://github.com/user-attachments/assets/ea8f790a-3e9d-4752-b8ce-94597333efe1" />
