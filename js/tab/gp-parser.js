@@ -43,6 +43,9 @@ function parseGPIF(doc) {
     const id = parseInt(el.getAttribute('id'));
     let fret = 0, string = 0, midi = 0;
     let tieOrigin = false, tieDestination = false;
+    let muted = false, hopoOrigin = false, hopoDestination = false, slide = false, bended = false, harmonic = false;
+    let palmMuted = false;
+    let pickStroke = null;
 
     for (const prop of el.querySelectorAll('Properties > Property')) {
       const name = prop.getAttribute('name');
@@ -52,6 +55,22 @@ function parseGPIF(doc) {
         string = parseInt(textContent(prop, 'String') || '0');
       } else if (name === 'Midi') {
         midi = parseInt(textContent(prop, 'Number') || '0');
+      } else if (name === 'Muted') {
+        muted = true;
+      } else if (name === 'PalmMuted') {
+        palmMuted = true;
+      } else if (name === 'HopoOrigin') {
+        hopoOrigin = true;
+      } else if (name === 'HopoDestination') {
+        hopoDestination = true;
+      } else if (name === 'Slide') {
+        slide = true;
+      } else if (name === 'Bended') {
+        bended = true;
+      } else if (name === 'Harmonic') {
+        harmonic = true;
+      } else if (name === 'PickStroke') {
+        pickStroke = textContent(prop, 'Value') || 'None';
       }
     }
 
@@ -63,7 +82,12 @@ function parseGPIF(doc) {
       tieDestination = dest === 'true';
     }
 
-    notes.set(id, { id, fret, string, midi, tieOrigin, tieDestination });
+    notes.set(id, {
+      id, fret, string, midi,
+      tieOrigin, tieDestination,
+      muted, palmMuted, hopoOrigin, hopoDestination, slide, bended, harmonic,
+      pickStroke
+    });
   }
 
   // --- Beats ---

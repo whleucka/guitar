@@ -232,6 +232,45 @@ export class TabRenderer {
       ctx.stroke();
     }
 
+    // --- Palm Muting Brackets ---
+    let pmStart = null;
+    for (let i = 0; i < timeline.length; i++) {
+      const isPM = timeline[i].notes.some(n => n.palmMuted);
+      const nextIsPM = timeline[i+1]?.notes.some(n => n.palmMuted);
+
+      if (isPM && pmStart === null) {
+        pmStart = this.beatXPositions[i];
+      }
+      
+      if (pmStart !== null && (!nextIsPM || i === timeline.length - 1)) {
+        const endX = this.beatXPositions[i];
+        const y = TAB.marginTop - 15;
+        
+        ctx.strokeStyle = sectionColor;
+        ctx.fillStyle = sectionColor;
+        ctx.lineWidth = 1;
+        ctx.font = "bold 9px sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("P.M.", pmStart, y);
+        
+        const textWidth = ctx.measureText("P.M. ").width;
+        ctx.beginPath();
+        ctx.setLineDash([2, 2]);
+        ctx.moveTo(pmStart + textWidth, y - 3);
+        ctx.lineTo(endX + 5, y - 3);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        // Cap
+        ctx.beginPath();
+        ctx.moveTo(endX + 5, y - 6);
+        ctx.lineTo(endX + 5, y);
+        ctx.stroke();
+        
+        pmStart = null;
+      }
+    }
+
     // Fret numbers
     ctx.font = `bold ${TAB.fontSize}px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
     ctx.textAlign = 'center';
@@ -241,6 +280,16 @@ export class TabRenderer {
       const event = timeline[i];
       const x = this.beatXPositions[i];
       if (x === undefined) continue;
+
+      // --- Strumming Pattern (Down/Up) ---
+      const stroke = event.notes.find(n => n.pickStroke && n.pickStroke !== 'None')?.pickStroke;
+      if (stroke) {
+        ctx.fillStyle = mutedColor;
+        ctx.font = "bold 10px sans-serif";
+        const label = stroke === 'Down' ? 'Π' : 'V'; // Traditional strum symbols
+        ctx.fillText(label, x, TAB.marginTop + staffHeight + 10);
+        ctx.font = `bold ${TAB.fontSize}px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
+      }
 
       for (const note of event.notes) {
         if (note.tieDestination) continue; // Don't redraw tied notes
@@ -257,7 +306,74 @@ export class TabRenderer {
         // Fret number
         const isCursor = i === this.cursorIndex;
         ctx.fillStyle = isCursor ? cursorColor : textColor;
-        ctx.fillText(note.fret, x, y);
+        
+        if (note.muted) {
+          ctx.fillText('X', x, y);
+        } else {
+          ctx.fillText(note.fret, x, y);
+        }
+
+        // Annotations
+        let annoText = '';
+        if (note.bended) annoText = 'B';
+        else if (note.harmonic) annoText = 'NH';
+
+        if (annoText) {
+          ctx.fillStyle = sectionColor;
+          ctx.font = `bold 8px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
+          ctx.fillText(annoText, x, y - 10);
+          ctx.font = `bold ${TAB.fontSize}px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
+        }
+
+        // --- Technique Graphics (Slides and Legato) ---
+        if (note.slide || note.hopoOrigin) {
+          // Find next note on this string to connect to
+          let nextX = null;
+          let nextY = null;
+          let nextFret = null;
+
+          for (let j = i + 1; j < Math.min(i + 10, timeline.length); j++) {
+            const nextEvent = timeline[j];
+            const targetNote = nextEvent.notes.find(n => n.string === note.string);
+            if (targetNote) {
+              nextX = this.beatXPositions[j];
+              nextY = TAB.marginTop + (stringCount - 1 - targetNote.string) * TAB.lineSpacing;
+              nextFret = targetNote.fret;
+              break;
+            }
+          }
+
+          if (nextX !== null) {
+            ctx.strokeStyle = sectionColor;
+            ctx.lineWidth = 1;
+
+            if (note.slide) {
+              // Diagonal slide line
+              const xOff = 8;
+              const yOff = note.fret < nextFret ? 3 : -3;
+              ctx.beginPath();
+              ctx.moveTo(x + xOff, y + yOff);
+              ctx.lineTo(nextX - xOff, nextY - yOff);
+              ctx.stroke();
+            } else if (note.hopoOrigin) {
+              // Legato arc (slur)
+              const xOff = 6;
+              const midX = (x + nextX) / 2;
+              const arcHeight = 12;
+              ctx.beginPath();
+              ctx.moveTo(x + xOff, y - 5);
+              ctx.quadraticCurveTo(midX, y - 5 - arcHeight, nextX - xOff, nextY - 5);
+              ctx.stroke();
+
+              // Add small H or P above the arc
+              const label = nextFret > note.fret ? 'H' : 'P';
+              ctx.fillStyle = sectionColor;
+              ctx.font = "bold 8px sans-serif";
+              ctx.fillText(label, midX, y - 5 - arcHeight);
+              ctx.font = `bold ${TAB.fontSize}px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
+            }
+          }
+        }
       }
 
       // Rest marker

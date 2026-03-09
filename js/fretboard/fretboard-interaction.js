@@ -46,8 +46,8 @@ export function setupInteraction(svg, noteElements) {
     ping.setAttribute('r', '10');
     ping.setAttribute('class', 'fb-note-ping');
     ping.setAttribute('fill', 'none');
-    ping.setAttribute('stroke', 'var(--accent-green)');
-    ping.setAttribute('stroke-width', '2');
+    ping.setAttribute('stroke', 'var(--accent-red)');
+    ping.setAttribute('stroke-width', '4');
     svg.appendChild(ping);
 
     setTimeout(() => {
@@ -178,6 +178,23 @@ export function setupInteraction(svg, noteElements) {
   let tabMeasureKeys = [];  // all notes in current measure (shown as visible)
   let tabActiveKeys = [];   // current beat notes (shown as playing)
 
+  function getAnnotation(note) {
+    if (note.palmMuted) return 'PM';
+    if (note.muted) return 'X';
+    if (note.hopoOrigin || note.hopoDestination) return 'H/P';
+    if (note.slide) return 'S';
+    if (note.bended) return 'B';
+    if (note.harmonic) return 'NH';
+    if (note.pickStroke === 'Down') return 'D';
+    if (note.pickStroke === 'Up') return 'U';
+    return '';
+  }
+
+  function setAnnotation(entry, text) {
+    const anno = entry.noteGroup.querySelector('.fb-note-anno');
+    if (anno) anno.textContent = text;
+  }
+
   events.on(TAB_BEAT_ON, ({ notes, measureNotes }) => {
     // Clear previous active highlights
     for (const key of tabActiveKeys) {
@@ -192,42 +209,38 @@ export function setupInteraction(svg, noteElements) {
       newMeasureKeys.some((k, i) => k !== tabMeasureKeys[i]);
 
     if (measureChanged) {
-      // Remove old measure highlights
+      // Remove old measure highlights and annotations
       for (const key of tabMeasureKeys) {
         const entry = noteElements.get(key);
         if (entry) {
           entry.noteGroup.classList.remove('visible', 'scale-tone');
+          setAnnotation(entry, '');
         }
       }
       tabMeasureKeys = newMeasureKeys;
 
-      // Show all measure notes as visible
-      for (const key of tabMeasureKeys) {
+      // Show all measure notes as visible with annotations
+      (measureNotes || []).forEach(n => {
+        const key = `${n.string}-${n.fret}`;
         const entry = noteElements.get(key);
         if (entry) {
           entry.noteGroup.classList.add('visible', 'scale-tone');
+          setAnnotation(entry, getAnnotation(n));
         }
-      }
+      });
     }
 
-    // Highlight current beat notes as playing
+    // Highlight current beat notes as playing (ensure annotation is set/correct)
     for (const note of notes) {
       if (note.tieDestination) continue;
       const key = `${note.string}-${note.fret}`;
       const entry = noteElements.get(key);
       if (entry) {
         entry.noteGroup.classList.add('visible', 'playing');
+        setAnnotation(entry, getAnnotation(note));
         tabActiveKeys.push(key);
       }
     }
-  });
-
-  events.on(TAB_BEAT_OFF, () => {
-    for (const key of tabActiveKeys) {
-      const entry = noteElements.get(key);
-      if (entry) entry.noteGroup.classList.remove('playing');
-    }
-    tabActiveKeys = [];
   });
 
   events.on(TAB_STOP, () => {
@@ -237,7 +250,10 @@ export function setupInteraction(svg, noteElements) {
     }
     for (const key of tabMeasureKeys) {
       const entry = noteElements.get(key);
-      if (entry) entry.noteGroup.classList.remove('visible', 'scale-tone');
+      if (entry) {
+        entry.noteGroup.classList.remove('visible', 'scale-tone');
+        setAnnotation(entry, '');
+      }
     }
     tabActiveKeys = [];
     tabMeasureKeys = [];

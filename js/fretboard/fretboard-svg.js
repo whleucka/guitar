@@ -67,9 +67,9 @@ export function renderFretboard() {
   svg.appendChild(svgEl('rect', {
     class: 'fb-nut',
     x: paddingLeft,
-    y: stringPositions[0].y - 5,
+    y: stringPositions[5].y - 5,
     width: nutWidth,
-    height: stringPositions[5].y - stringPositions[0].y + 10,
+    height: stringPositions[0].y - stringPositions[5].y + 10,
     rx: 2,
   }));
 
@@ -78,8 +78,8 @@ export function renderFretboard() {
     const x = fretPositions[f].x;
     svg.appendChild(svgEl('line', {
       class: 'fb-fret',
-      x1: x, y1: stringPositions[0].y - 5,
-      x2: x, y2: stringPositions[5].y + 5,
+      x1: x, y1: stringPositions[5].y - 5,
+      x2: x, y2: stringPositions[0].y + 5,
     }));
   }
 
@@ -158,6 +158,13 @@ export function renderFretboard() {
       });
       text.textContent = noteInfo.display;
       noteG.appendChild(text);
+
+      const anno = svgEl('text', {
+        class: 'fb-note-anno',
+        x: mx, y: sy - 14,
+        'font-size': '8',
+      });
+      noteG.appendChild(anno);
 
       g.appendChild(noteG);
       svg.appendChild(g);

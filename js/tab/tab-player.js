@@ -34,7 +34,7 @@ export class TabPlayer {
 
   /**
    * Set all track data.
-   * @param {Array} tracks - [{ timeline, measures, isDrum }, ...]
+   * @param {Array} tracks - [{ timeline, measures, isDrum, tuning }, ...]
    * @param {number} primaryIndex - which track drives visuals
    */
   setTracks(tracks, primaryIndex = 0) {
@@ -42,6 +42,7 @@ export class TabPlayer {
       timeline: t.timeline,
       measures: t.measures,
       isDrum: !!t.isDrum,
+      tuning: t.tuning || [40, 45, 50, 55, 59, 64],
       muted: false,
       currentIndex: 0,
     }));
@@ -169,15 +170,15 @@ export class TabPlayer {
     if (track.isDrum) {
       for (const note of event.notes) {
         if (note.tieDestination) continue;
-        playDrum(note.fret, scaledTime, gain);
+        const drumNote = note.midi > 0 ? note.midi : note.fret;
+        playDrum(drumNote, scaledTime, gain);
       }
     } else {
       for (const note of event.notes) {
         if (note.tieDestination) continue;
-        const freq = note.midi > 0
-          ? midiToFrequency(note.midi)
-          : midiToFrequency(40 + note.fret);
-        playNote(freq, Math.max(0, Math.min(5, note.string)), scaledTime, gain, noteDur);
+        const baseMidi = (track.tuning && track.tuning[note.string]) || 40;
+        const midi = note.midi > 0 ? note.midi : baseMidi + note.fret;
+        playNote(midiToFrequency(midi), Math.max(0, Math.min(5, note.string)), scaledTime, gain, noteDur);
       }
     }
   }

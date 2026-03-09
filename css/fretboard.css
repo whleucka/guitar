@@ -85,6 +85,21 @@
   pointer-events: none;
 }
 
+.fb-note-anno {
+  fill: var(--accent-gold);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-anchor: middle;
+  pointer-events: none;
+  opacity: 0.9;
+  text-shadow: 0 0 2px black;
+}
+
+.fb-note.playing .fb-note-anno {
+  fill: white;
+  font-weight: 800;
+}
+
 /* Open string labels (left of nut) */
 .fb-open-label {
   fill: var(--text-secondary);
@@ -159,18 +174,37 @@
 }
 
 /* Scale playback — currently playing note */
+.fb-note.playing {
+  opacity: 1;
+  z-index: 10;
+}
+
 .fb-note.playing .fb-note-circle {
-  fill: var(--accent-green);
-  filter: drop-shadow(0 0 6px var(--accent-green));
+  fill: var(--accent-red);
+  filter: drop-shadow(0 0 4px var(--accent-red));
+  stroke: white;
+  stroke-width: 1px;
+  animation: note-pulse 1.2s infinite alternate ease-in-out;
+}
+
+.fb-note.playing .fb-note-text {
+  fill: white;
+  font-weight: 700;
 }
 
 /* Playing animation */
+@keyframes note-pulse {
+  from { filter: drop-shadow(0 0 2px var(--accent-red)); opacity: 0.9; }
+  to { filter: drop-shadow(0 0 6px var(--accent-red)); opacity: 1; }
+}
+
 @keyframes note-ping {
-  0% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(1.6); opacity: 0; }
+  0% { transform: scale(1); opacity: 0.4; stroke-width: 2px; }
+  100% { transform: scale(1.3); opacity: 0; stroke-width: 0.5px; }
 }
 
 .fb-note-ping {
-  animation: note-ping 0.4s ease-out forwards;
+  animation: note-ping 0.8s cubic-bezier(0, 0, 0.2, 1) forwards;
   pointer-events: none;
 }
+

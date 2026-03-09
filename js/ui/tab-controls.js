@@ -152,7 +152,13 @@ export function renderTabViewer(container) {
     score.tracks.forEach((t, i) => {
       const { timeline, measures } = buildTimeline(score, i);
       if (timeline.length === 0) return;
-      allTrackData.push({ trackIndex: i, timeline, measures, isDrum: t.isDrum });
+      allTrackData.push({
+        trackIndex: i,
+        timeline,
+        measures,
+        isDrum: t.isDrum,
+        tuning: t.tuning,
+      });
     });
   }
 
@@ -168,6 +174,7 @@ export function renderTabViewer(container) {
         timeline: t.timeline,
         measures: t.measures,
         isDrum: t.isDrum,
+        tuning: t.tuning,
       })),
       primaryIdx,
     );

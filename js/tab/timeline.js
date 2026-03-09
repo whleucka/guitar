@@ -55,66 +55,84 @@ export function buildTimeline(score, trackIndex) {
 
     const tempo = mb.tempo;
     const beatDuration = 60 / tempo; // seconds per quarter note
-
     const measureStart = absoluteTime;
-    const measureBeats = [];
 
-    // Use first voice only (voice index 0)
-    const voiceId = bar.voiceIds[0];
-    if (voiceId >= 0) {
+    // Support multiple voices per bar (common in drums and polyphonic guitar)
+    const barBeatsMap = new Map(); // time -> { event }
+
+    for (const voiceId of bar.voiceIds) {
+      if (voiceId < 0) continue;
       const voice = score.voices.get(voiceId);
-      if (voice) {
-        for (const beatId of voice.beatIds) {
-          const beat = score.beats.get(beatId);
-          if (!beat) continue;
+      if (!voice) continue;
 
-          const rhythm = score.rhythms.get(beat.rhythmId);
-          if (!rhythm) continue;
+      let voiceTime = measureStart;
+      for (const beatId of voice.beatIds) {
+        const beat = score.beats.get(beatId);
+        if (!beat) continue;
 
-          const durationInBeats = rhythmToBeats(rhythm);
-          const durationSecs = durationInBeats * beatDuration;
+        const rhythm = score.rhythms.get(beat.rhythmId);
+        if (!rhythm) continue;
 
-          const beatNotes = [];
-          if (!beat.isRest) {
-            for (const noteId of beat.noteIds) {
-              const note = score.notes.get(noteId);
-              if (!note) continue;
+        const durationInBeats = rhythmToBeats(rhythm);
+        const durationSecs = durationInBeats * beatDuration;
 
-              // GPIF string index matches app convention: 0 = low E, 5 = high e
-              const appString = note.string;
-
-              beatNotes.push({
-                fret: note.fret,
-                string: appString,
-                midi: note.midi,
-                tieDestination: note.tieDestination,
-              });
-            }
+        const beatNotes = [];
+        if (!beat.isRest) {
+          for (const noteId of beat.noteIds) {
+            const note = score.notes.get(noteId);
+            if (!note) continue;
+            beatNotes.push({
+              fret: note.fret,
+              string: note.string,
+              midi: note.midi,
+              tieDestination: note.tieDestination,
+              muted: note.muted,
+              palmMuted: note.palmMuted,
+              hopoOrigin: note.hopoOrigin,
+              hopoDestination: note.hopoDestination,
+              slide: note.slide,
+              bended: note.bended,
+              harmonic: note.harmonic,
+              pickStroke: note.pickStroke
+            });
           }
+        }
 
-          timeline.push({
+        // Use a small epsilon for time grouping to handle float precision
+        const timeKey = Math.round(voiceTime * 1000) / 1000;
+        if (barBeatsMap.has(timeKey)) {
+          // Merge with existing beat at this time
+          const existing = barBeatsMap.get(timeKey);
+          existing.notes.push(...beatNotes);
+          // Keep the longest duration for visual/scheduling purposes
+          existing.duration = Math.max(existing.duration, durationSecs);
+        } else {
+          barBeatsMap.set(timeKey, {
             masterBarIndex: mb.index,
-            time: absoluteTime,
+            time: voiceTime,
             duration: durationSecs,
             notes: beatNotes,
             rhythmLabel: RHYTHM_LABELS[rhythm.noteValue] || 'Q',
             dotted: rhythm.dots > 0,
             tempo,
           });
-
-          measureBeats.push(timeline.length - 1);
-          absoluteTime += durationSecs;
         }
+
+        voiceTime += durationSecs;
       }
     }
 
-    // Ensure measure fills its full theoretical duration based on time signature.
-    // Beats may not sum to a full measure (trailing rests are implicit in GP).
-    const measureDuration = (mb.timeSignature.num / (mb.timeSignature.den / 4)) * beatDuration;
-    const measureEnd = measureStart + measureDuration;
-    if (absoluteTime < measureEnd) {
-      absoluteTime = measureEnd;
+    // Sort merged beats by time and add to timeline
+    const sortedTimes = Array.from(barBeatsMap.keys()).sort((a, b) => a - b);
+    const measureBeats = [];
+    for (const t of sortedTimes) {
+      timeline.push(barBeatsMap.get(t));
+      measureBeats.push(timeline.length - 1);
     }
+
+    // Ensure measure fills its full theoretical duration
+    const measureDuration = (mb.timeSignature.num / (mb.timeSignature.den / 4)) * beatDuration;
+    absoluteTime = measureStart + measureDuration;
 
     measures.push({
       masterBarIndex: mb.index,
