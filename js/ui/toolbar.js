@@ -11,9 +11,12 @@ const VIEWS = [
 ];
 
 export function renderToolbar(container) {
+  const inner = document.createElement('div');
+  inner.className = 'toolbar-inner';
+
   const title = document.createElement('span');
   title.className = 'toolbar-title';
-  title.textContent = 'Guitar';
+  title.textContent = 'RiffLogic';
 
   const nav = document.createElement('nav');
   nav.className = 'toolbar-nav';
@@ -34,8 +37,9 @@ export function renderToolbar(container) {
     return btn;
   });
 
-  container.appendChild(title);
-  container.appendChild(nav);
+  inner.appendChild(title);
+  inner.appendChild(nav);
+  container.appendChild(inner);
 
   // Emit initial view
   requestAnimationFrame(() => {

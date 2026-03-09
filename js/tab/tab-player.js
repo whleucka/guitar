@@ -1,9 +1,10 @@
 // Tab playback engine — multi-track scheduling-ahead pattern for audio + visual sync
 
-import { getAudioContext } from '../audio/audio-engine.js';
+import { getAudioContext, getMasterOutput } from '../audio/audio-engine.js';
 import { playNote } from '../audio/synth-voice.js';
 import { playDrum } from '../audio/drum-voice.js';
 import { midiToFrequency } from '../music/notes.js';
+import { METRONOME } from '../config.js';
 import { events, TAB_BEAT_ON, TAB_BEAT_OFF, TAB_POSITION, TAB_STOP } from '../events.js';
 
 const LOOKAHEAD_MS = 100;
@@ -24,6 +25,10 @@ export class TabPlayer {
     this.loopB = null;
     this.state = 'stopped'; // stopped | playing | paused
     this.schedulerInterval = null;
+
+    this.metronomeEnabled = false;
+    this.nextMetronomeMeasureIndex = 0;
+    this.nextMetronomeBeatInMeasure = 0;
   }
 
   /** Primary track shortcut */
@@ -72,6 +77,10 @@ export class TabPlayer {
     }
   }
 
+  setMetronomeEnabled(enabled) {
+    this.metronomeEnabled = enabled;
+  }
+
   play(fromIndex = 0) {
     if (!this.timeline) return;
 
@@ -86,6 +95,8 @@ export class TabPlayer {
       if (i === this.primaryIndex) continue;
       this.tracks[i].currentIndex = this._findIndexAtTime(this.tracks[i].timeline, eventTime);
     }
+
+    this._syncMetronome(eventTime);
 
     this.state = 'playing';
     this.schedulerInterval = setInterval(() => this._scheduler(), SCHEDULE_INTERVAL_MS);
@@ -111,6 +122,8 @@ export class TabPlayer {
       if (i === this.primaryIndex) continue;
       this.tracks[i].currentIndex = this._findIndexAtTime(this.tracks[i].timeline, eventTime);
     }
+
+    this._syncMetronome(eventTime);
 
     this.state = 'playing';
     this.schedulerInterval = setInterval(() => this._scheduler(), SCHEDULE_INTERVAL_MS);
@@ -145,9 +158,10 @@ export class TabPlayer {
   seekTo(index) {
     if (!this.timeline) return;
     this.currentIndex = Math.max(0, Math.min(index, this.timeline.length - 1));
+    const eventTime = this.timeline[this.currentIndex].time;
+
     if (this.state === 'playing') {
       const ctx = getAudioContext();
-      const eventTime = this.timeline[this.currentIndex].time;
       this.startTime = ctx.currentTime - eventTime / this.tempoScale;
 
       for (let i = 0; i < this.tracks.length; i++) {
@@ -155,6 +169,33 @@ export class TabPlayer {
         this.tracks[i].currentIndex = this._findIndexAtTime(this.tracks[i].timeline, eventTime);
       }
     }
+    this._syncMetronome(eventTime);
+  }
+
+  _syncMetronome(time) {
+    if (!this.measures) return;
+    for (let i = 0; i < this.measures.length; i++) {
+      const m = this.measures[i];
+      if (time >= m.startTime && time < m.endTime) {
+        this.nextMetronomeMeasureIndex = i;
+        const beatDuration = 60 / m.tempo;
+        this.nextMetronomeBeatInMeasure = Math.floor((time - m.startTime) / beatDuration);
+        
+        // If we are exactly at a beat time, start scheduling from this beat.
+        // If we are between beats, start from the NEXT beat.
+        const elapsedInBeat = (time - m.startTime) % beatDuration;
+        if (elapsedInBeat > 0.001) {
+          this.nextMetronomeBeatInMeasure++;
+          if (this.nextMetronomeBeatInMeasure >= m.timeSignature.num) {
+            this.nextMetronomeBeatInMeasure = 0;
+            this.nextMetronomeMeasureIndex++;
+          }
+        }
+        return;
+      }
+    }
+    this.nextMetronomeMeasureIndex = this.measures.length;
+    this.nextMetronomeBeatInMeasure = 0;
   }
 
   _findIndexAtTime(timeline, time) {
@@ -183,12 +224,56 @@ export class TabPlayer {
     }
   }
 
+  _scheduleMetronomeClick(time, isDownbeat) {
+    const ctx = getAudioContext();
+    const output = getMasterOutput();
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = isDownbeat ? METRONOME.clickFreqHigh : METRONOME.clickFreqLow;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(METRONOME.clickGain, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + METRONOME.clickDuration);
+
+    osc.connect(gain);
+    gain.connect(output);
+
+    osc.start(time);
+    osc.stop(time + METRONOME.clickDuration + 0.01);
+
+    osc.onended = () => {
+      osc.disconnect();
+      gain.disconnect();
+    };
+  }
+
   _scheduler() {
     if (this.state !== 'playing' || !this.timeline) return;
 
     const ctx = getAudioContext();
     const lookahead = LOOKAHEAD_MS / 1000;
     const primary = this.tracks[this.primaryIndex];
+
+    // --- Schedule metronome ---
+    if (this.metronomeEnabled && this.measures) {
+      while (this.nextMetronomeMeasureIndex < this.measures.length) {
+        const m = this.measures[this.nextMetronomeMeasureIndex];
+        const beatDuration = 60 / m.tempo;
+        const beatTime = m.startTime + this.nextMetronomeBeatInMeasure * beatDuration;
+        const scaledTime = this.startTime + beatTime / this.tempoScale;
+
+        if (scaledTime > ctx.currentTime + lookahead) break;
+
+        this._scheduleMetronomeClick(scaledTime, this.nextMetronomeBeatInMeasure === 0);
+
+        this.nextMetronomeBeatInMeasure++;
+        if (this.nextMetronomeBeatInMeasure >= m.timeSignature.num) {
+          this.nextMetronomeBeatInMeasure = 0;
+          this.nextMetronomeMeasureIndex++;
+        }
+      }
+    }
 
     // --- Schedule primary track (audio + visuals) ---
     while (primary.currentIndex < primary.timeline.length) {
@@ -256,6 +341,7 @@ export class TabPlayer {
           if (i === this.primaryIndex) continue;
           this.tracks[i].currentIndex = this._findIndexAtTime(this.tracks[i].timeline, restartTime);
         }
+        this._syncMetronome(restartTime);
         break;
       }
     }

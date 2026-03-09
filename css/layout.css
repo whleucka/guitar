@@ -5,12 +5,21 @@
 }
 
 #toolbar {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 1rem;
+}
+
+.toolbar-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1.5rem;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  padding: 0.75rem 0;
+  max-width: 1600px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  width: 100%;
 }
 
 .toolbar-title {
@@ -18,11 +27,13 @@
   font-weight: 600;
   color: var(--accent-gold);
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .toolbar-nav {
   display: flex;
   gap: 0.25rem;
+  flex-wrap: wrap;
 }
 
 .toolbar-tab {
@@ -60,14 +71,19 @@
 
 #fretboard-container {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1600px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
+#tab-container {
+  width: 100%;
+  max-width: 1600px;
+}
+
 #controls-container {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1600px;
 }
 
 .view-panel {
@@ -78,6 +94,15 @@
 }
 
 .view-panel.hidden {
+  display: none;
+}
+
+#view-tabs {
+  display: block;
+  width: 100%;
+}
+
+#view-tabs.hidden {
   display: none;
 }
 

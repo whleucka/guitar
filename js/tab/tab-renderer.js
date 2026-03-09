@@ -6,9 +6,9 @@ const TAB = {
   measurePadding: 20,
   marginLeft: 50,
   marginRight: 20,
-  marginTop: 60, // Space for section labels/bar numbers
+  marginTop: 100, // Increased for RiffLogic
   marginBottom: 20,
-  systemSpacing: 80, // Space between different systems (rows)
+  systemSpacing: 120, // Increased for visual breathing room
   cursorWidth: 3,
   fontSize: 13,
   sectionFontSize: 11,
@@ -159,7 +159,7 @@ export class TabRenderer {
     const systemHeight = staffHeight + TAB.marginTop + TAB.marginBottom;
     
     // Add extra space at top for the instrument name (only once)
-    const titleHeight = 30;
+    const titleHeight = 40;
     let currentY = titleHeight;
 
     for (let sIdx = 0; sIdx < systems.length; sIdx++) {
@@ -220,6 +220,7 @@ export class TabRenderer {
     const cursorColor = style.getPropertyValue('--accent-gold').trim() || '#e0af68';
     const accentBlue = style.getPropertyValue('--accent-blue').trim() || '#7aa2f7';
     const accentRed = style.getPropertyValue('--accent-red').trim() || '#f7768e';
+    const accentGold = style.getPropertyValue('--accent-gold').trim() || '#e0af68';
     const sectionColor = style.getPropertyValue('--accent-green').trim() || '#9ece6a';
 
     ctx.fillStyle = bgColor;
@@ -228,11 +229,11 @@ export class TabRenderer {
     const { stringCount, timeline, name } = this.track;
     const staffHeight = (stringCount - 1) * TAB.lineSpacing;
 
-    // Instrument Name (Once at top)
-    ctx.fillStyle = sectionColor;
-    ctx.font = `bold 11px sans-serif`;
+    // Instrument Name (Once at top) - RiffLogic style
+    ctx.fillStyle = accentGold;
+    ctx.font = `bold 12px sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText(name.toUpperCase(), TAB.marginLeft, 20);
+    ctx.fillText(name.toUpperCase(), TAB.marginLeft, 30);
 
     for (let sIdx = 0; sIdx < this.systems.length; sIdx++) {
       const system = this.systems[sIdx];
@@ -268,16 +269,18 @@ export class TabRenderer {
         ctx.lineTo(x, currentY + staffHeight);
         ctx.stroke();
 
+        // Section label (e.g. Verse)
         if (measure.section) {
           const label = measure.section.text || measure.section.letter;
           if (label) {
-            ctx.fillStyle = sectionColor;
+            ctx.fillStyle = accentBlue;
             ctx.font = `bold ${TAB.sectionFontSize}px sans-serif`;
             ctx.textAlign = 'left';
-            ctx.fillText(label, x + 4, currentY - 20);
+            ctx.fillText(label, x + 4, currentY - 55);
           }
         }
 
+        // Bar number
         ctx.fillStyle = mutedColor;
         ctx.font = `9px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
         ctx.textAlign = 'left';
@@ -298,7 +301,6 @@ export class TabRenderer {
         for (const beatIdx of measure.beatIndices) {
           const isPM = timeline[beatIdx].notes.some(n => n.palmMuted);
           const nextIsPM = timeline[beatIdx + 1]?.notes.some(n => n.palmMuted);
-          // Only start/end if on same system row
           const nextIsOnSameRow = (beatIdx + 1 < timeline.length) && 
                                   this.beatPositions[beatIdx + 1] && 
                                   this.beatPositions[beatIdx + 1].y === system.y;
@@ -309,7 +311,7 @@ export class TabRenderer {
           
           if (pmStart !== null && (!nextIsPM || !nextIsOnSameRow)) {
             const endX = this.beatPositions[beatIdx].x;
-            const y = currentY - 15;
+            const y = currentY - 25;
             
             ctx.strokeStyle = sectionColor;
             ctx.fillStyle = sectionColor;
@@ -327,13 +329,11 @@ export class TabRenderer {
               ctx.stroke();
               ctx.setLineDash([]);
               
-              // Cap
               ctx.beginPath();
               ctx.moveTo(endX + 5, y - 6);
               ctx.lineTo(endX + 5, y);
               ctx.stroke();
             }
-            
             pmStart = null;
           }
         }
@@ -374,7 +374,7 @@ export class TabRenderer {
             else ctx.fillText(note.fret, x, y);
 
             if (note.harmonic || note.bended) {
-              ctx.fillStyle = sectionColor;
+              ctx.fillStyle = accentRed;
               ctx.font = "bold 7px sans-serif";
               ctx.fillText(note.harmonic ? 'NH' : 'B', x, y - 10);
             }

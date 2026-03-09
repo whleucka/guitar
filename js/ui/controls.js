@@ -4,6 +4,7 @@ import { NOTE_NAMES } from '../music/notes.js';
 import { events, NOTE_HIGHLIGHT, NOTE_CLEAR_HIGHLIGHT, SHOW_ALL_NOTES, VOLUME_CHANGE } from '../events.js';
 import { setMasterVolume } from '../audio/audio-engine.js';
 import { AUDIO } from '../config.js';
+import { setVoiceType, VOICE_TYPES } from '../audio/synth-voice.js';
 
 export function renderControls(container) {
   // --- Note highlight buttons ---

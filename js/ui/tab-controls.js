@@ -4,6 +4,7 @@ import { parseGPFile } from '../tab/gp-parser.js';
 import { buildTimeline } from '../tab/timeline.js';
 import { TabRenderer } from '../tab/tab-renderer.js';
 import { TabPlayer } from '../tab/tab-player.js';
+import { setVoiceType, VOICE_TYPES } from '../audio/synth-voice.js';
 import { events, TAB_LOADED, TAB_BEAT_ON, TAB_BEAT_OFF, TAB_POSITION, TAB_STOP } from '../events.js';
 
 export function renderTabViewer(container) {
@@ -30,9 +31,9 @@ export function renderTabViewer(container) {
   titleRow.appendChild(mixerToggle);
   header.appendChild(titleRow);
 
-  // Controls row
-  const row = document.createElement('div');
-  row.className = 'tab-controls-row';
+  // Row 1: File + Track + Voice
+  const row1 = document.createElement('div');
+  row1.className = 'tab-controls-row';
 
   // File picker
   const fileInput = document.createElement('input');
@@ -45,11 +46,52 @@ export function renderTabViewer(container) {
   fileBtn.textContent = 'Open GP File';
   fileBtn.addEventListener('click', () => fileInput.click());
 
-  // Track select (controls which track is displayed on tab + fretboard)
+  // Track select
   const trackSelect = document.createElement('select');
   trackSelect.className = 'scale-select';
   trackSelect.innerHTML = '<option value="">Track</option>';
   trackSelect.disabled = true;
+
+  // Voice/Instrument Selector
+  const voiceSelect = document.createElement('select');
+  voiceSelect.className = 'scale-select';
+  
+  const voiceOptions = [
+    { value: VOICE_TYPES.KARPLUS, label: 'Default Synth' },
+    { value: VOICE_TYPES.ACOUSTIC, label: 'Acoustic Guitar' },
+    { value: VOICE_TYPES.ELECTRIC_CLEAN, label: 'Electric Clean' },
+    { value: VOICE_TYPES.ELECTRIC_MUTED, label: 'Electric Muted' },
+    { value: VOICE_TYPES.OVERDRIVEN, label: 'Overdriven' },
+    { value: VOICE_TYPES.DISTORTION, label: 'Distortion' }
+  ];
+
+  voiceOptions.forEach(opt => {
+    const el = document.createElement('option');
+    el.value = opt.value;
+    el.textContent = opt.label;
+    voiceSelect.appendChild(el);
+  });
+
+  voiceSelect.addEventListener('change', async () => {
+    voiceSelect.disabled = true;
+    const selectedOption = voiceSelect.options[voiceSelect.selectedIndex];
+    const oldLabel = selectedOption.textContent;
+    selectedOption.textContent = 'Loading...';
+    await setVoiceType(voiceSelect.value);
+    selectedOption.textContent = oldLabel;
+    voiceSelect.disabled = false;
+  });
+
+  row1.appendChild(fileBtn);
+  row1.appendChild(fileInput);
+  row1.appendChild(trackSelect);
+  row1.appendChild(voiceSelect);
+  header.appendChild(row1);
+
+  // Row 2: Transport + Tempo + Loop + Metronome
+  const row2 = document.createElement('div');
+  row2.className = 'tab-controls-row';
+  row2.style.marginTop = '0.5rem';
 
   // Transport
   const playBtn = document.createElement('button');
@@ -108,26 +150,29 @@ export function renderTabViewer(container) {
   loopWrap.appendChild(loopBBtn);
   loopWrap.appendChild(loopClearBtn);
 
-  // Position display
+  // Metronome toggle
+  const metroBtn = document.createElement('button');
+  metroBtn.className = 'caged-btn';
+  metroBtn.textContent = '⏱';
+  metroBtn.title = 'Toggle Metronome';
+  metroBtn.disabled = true;
+
+  row2.appendChild(playBtn);
+  row2.appendChild(stopBtn);
+  row2.appendChild(tempoWrap);
+  row2.appendChild(loopWrap);
+  row2.appendChild(metroBtn);
+  header.appendChild(row2);
+
+  // Row 3: Position display
   const posDisplay = document.createElement('span');
   posDisplay.className = 'tab-position';
   posDisplay.textContent = '';
 
-  // Song info
   const songInfo = document.createElement('span');
   songInfo.className = 'tab-song-info';
   songInfo.textContent = '';
 
-  row.appendChild(fileBtn);
-  row.appendChild(fileInput);
-  row.appendChild(trackSelect);
-  row.appendChild(playBtn);
-  row.appendChild(stopBtn);
-  row.appendChild(tempoWrap);
-  row.appendChild(loopWrap);
-  header.appendChild(row);
-
-  // Info row
   const infoRow = document.createElement('div');
   infoRow.className = 'tab-info-row';
   infoRow.appendChild(songInfo);
@@ -154,7 +199,6 @@ export function renderTabViewer(container) {
   let score = null;
   let allTrackData = []; // [{ trackIndex, timeline, measures, isDrum }]
   let selectedTrackIndex = null;
-  let visibleTrackIndices = new Set(); // Indices into allTrackData
   let loopA = null;
   let loopB = null;
   let settingLoop = null;
@@ -229,9 +273,6 @@ export function renderTabViewer(container) {
     const trackDataIdx = allTrackData.findIndex(t => t.trackIndex === trackIndex);
     if (trackDataIdx < 0) return;
 
-    // Ensure selected track is visible
-    visibleTrackIndices.add(trackDataIdx);
-
     const trackData = allTrackData[trackDataIdx];
     posDisplay.textContent = `Bar 1 / ${trackData.measures.length}`;
     loopA = null;
@@ -269,31 +310,11 @@ export function renderTabViewer(container) {
         player.setTrackMuted(i, !audioCb.checked);
       });
 
-      // Visibility toggle (eye icon)
-      const visibilityBtn = document.createElement('button');
-      visibilityBtn.className = 'icon-btn visibility-toggle';
-      visibilityBtn.innerHTML = '&#128065;'; // Eye icon
-      visibilityBtn.title = 'Toggle visibility in tab';
-      visibilityBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (visibleTrackIndices.has(i)) {
-          // Don't hide if it's the only one and it's selected
-          if (visibleTrackIndices.size > 1 || td.trackIndex !== selectedTrackIndex) {
-            visibleTrackIndices.delete(i);
-          }
-        } else {
-          visibleTrackIndices.add(i);
-        }
-        updateRenderer();
-        updateMixerUI();
-      });
-
       const nameSpan = document.createElement('span');
       nameSpan.className = 'tab-mixer-name';
       nameSpan.textContent = track.name + (td.isDrum ? ' [drums]' : '');
 
       item.appendChild(audioCb);
-      item.appendChild(visibilityBtn);
       item.appendChild(nameSpan);
 
       // Click on the name to select as primary (only non-drum)
@@ -319,11 +340,6 @@ export function renderTabViewer(container) {
       const idx = parseInt(item.dataset.playerIndex);
       const td = allTrackData[idx];
       item.classList.toggle('selected', td && td.trackIndex === selectedTrackIndex);
-      
-      const visBtn = item.querySelector('.visibility-toggle');
-      if (visBtn) {
-        visBtn.style.opacity = visibleTrackIndices.has(idx) ? '1' : '0.3';
-      }
     });
   }
 
@@ -360,6 +376,7 @@ export function renderTabViewer(container) {
       loopABtn.disabled = false;
       loopBBtn.disabled = false;
       loopClearBtn.disabled = false;
+      metroBtn.disabled = false;
 
       // Build mixer
       buildMixer();
@@ -445,6 +462,13 @@ export function renderTabViewer(container) {
     loopBBtn.classList.remove('active');
     player.setLoop(null, null);
     renderer.setLoop(null, null);
+  });
+
+  // --- Metronome ---
+  metroBtn.addEventListener('click', () => {
+    const enabled = !player.metronomeEnabled;
+    player.setMetronomeEnabled(enabled);
+    metroBtn.classList.toggle('active', enabled);
   });
 
   renderer.onCanvasClick((index) => {
