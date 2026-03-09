@@ -54,7 +54,9 @@ export function setupInteraction(svg, noteElements) {
       entry.noteGroup.classList.remove('active');
       const map = activeChordMap || activeCAGEDMap || activeScaleMap;
       const inMap = map && map.has(key);
-      if (!showAllNotes && !highlightedNotes.has(entry.noteInfo.name) && !inMap) {
+      const inTab = tabMeasureKeys.includes(key) || tabActiveKeys.includes(key);
+
+      if (!showAllNotes && !highlightedNotes.has(entry.noteInfo.name) && !inMap && !inTab) {
         entry.noteGroup.classList.remove('visible');
       }
       ping.remove();
