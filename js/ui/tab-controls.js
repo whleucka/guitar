@@ -13,7 +13,22 @@ export function renderTabViewer(container) {
   // --- Header ---
   const header = document.createElement('div');
   header.className = 'control-group tab-header';
-  header.innerHTML = '<h3>Tab Viewer</h3>';
+  
+  const titleRow = document.createElement('div');
+  titleRow.className = 'tab-title-row';
+  titleRow.style.display = 'flex';
+  titleRow.style.justifyContent = 'space-between';
+  titleRow.style.alignItems = 'center';
+  titleRow.style.marginBottom = '0.75rem';
+  titleRow.innerHTML = '<h3 style="margin:0">Tab Viewer</h3>';
+
+  const mixerToggle = document.createElement('button');
+  mixerToggle.className = 'icon-btn';
+  mixerToggle.innerHTML = 'Tracks &#9660;'; // Down arrow
+  mixerToggle.style.fontSize = '0.7rem';
+  mixerToggle.style.padding = '0.2rem 0.5rem';
+  titleRow.appendChild(mixerToggle);
+  header.appendChild(titleRow);
 
   // Controls row
   const row = document.createElement('div');
@@ -121,7 +136,7 @@ export function renderTabViewer(container) {
 
   // --- Track mixer (built dynamically on file load) ---
   const mixerWrap = document.createElement('div');
-  mixerWrap.className = 'tab-mixer';
+  mixerWrap.className = 'tab-mixer hidden'; // Hidden by default
   header.appendChild(mixerWrap);
 
   group.appendChild(header);
@@ -139,9 +154,15 @@ export function renderTabViewer(container) {
   let score = null;
   let allTrackData = []; // [{ trackIndex, timeline, measures, isDrum }]
   let selectedTrackIndex = null;
+  let visibleTrackIndices = new Set(); // Indices into allTrackData
   let loopA = null;
   let loopB = null;
   let settingLoop = null;
+
+  mixerToggle.addEventListener('click', () => {
+    const isHidden = mixerWrap.classList.toggle('hidden');
+    mixerToggle.innerHTML = isHidden ? 'Tracks &#9660;' : 'Tracks &#9650;';
+  });
 
   /**
    * Build timelines for all tracks.
@@ -181,29 +202,47 @@ export function renderTabViewer(container) {
   }
 
   /**
+   * Update the renderer with the currently selected track.
+   */
+  function updateRenderer() {
+    if (!score || selectedTrackIndex === null) return;
+    
+    const td = allTrackData.find(t => t.trackIndex === selectedTrackIndex);
+    if (!td) return;
+
+    const track = score.tracks[td.trackIndex];
+    renderer.setData({
+      timeline: td.timeline,
+      measures: td.measures,
+      stringCount: track.stringCount,
+      name: track.name
+    });
+  }
+
+  /**
    * Select a track for visual display and set it as primary.
    */
   function selectTrack(trackIndex) {
     if (!score) return;
     selectedTrackIndex = trackIndex;
 
-    const trackData = allTrackData.find(t => t.trackIndex === trackIndex);
-    if (!trackData) return;
+    const trackDataIdx = allTrackData.findIndex(t => t.trackIndex === trackIndex);
+    if (trackDataIdx < 0) return;
 
-    const track = score.tracks[trackIndex];
-    renderer.setData(trackData.timeline, trackData.measures, track.stringCount);
+    // Ensure selected track is visible
+    visibleTrackIndices.add(trackDataIdx);
+
+    const trackData = allTrackData[trackDataIdx];
     posDisplay.textContent = `Bar 1 / ${trackData.measures.length}`;
     loopA = null;
     loopB = null;
     settingLoop = null;
 
     // Update which track is primary in the player (preserves mute states)
-    const primaryIdx = allTrackData.findIndex(t => t.trackIndex === trackIndex);
-    if (primaryIdx >= 0) {
-      player.setPrimary(primaryIdx);
-    }
+    player.setPrimary(trackDataIdx);
 
-    updateMixerSelection();
+    updateRenderer();
+    updateMixerUI();
   }
 
   /**
@@ -217,22 +256,44 @@ export function renderTabViewer(container) {
       const td = allTrackData[i];
       const track = score.tracks[td.trackIndex];
 
-      const item = document.createElement('label');
+      const item = document.createElement('div');
       item.className = 'tab-mixer-track';
       item.dataset.playerIndex = i;
 
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = true;
-      cb.addEventListener('change', () => {
-        player.setTrackMuted(i, !cb.checked);
+      // Audio mute checkbox
+      const audioCb = document.createElement('input');
+      audioCb.type = 'checkbox';
+      audioCb.checked = true;
+      audioCb.title = 'Mute/Unmute audio';
+      audioCb.addEventListener('change', () => {
+        player.setTrackMuted(i, !audioCb.checked);
+      });
+
+      // Visibility toggle (eye icon)
+      const visibilityBtn = document.createElement('button');
+      visibilityBtn.className = 'icon-btn visibility-toggle';
+      visibilityBtn.innerHTML = '&#128065;'; // Eye icon
+      visibilityBtn.title = 'Toggle visibility in tab';
+      visibilityBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (visibleTrackIndices.has(i)) {
+          // Don't hide if it's the only one and it's selected
+          if (visibleTrackIndices.size > 1 || td.trackIndex !== selectedTrackIndex) {
+            visibleTrackIndices.delete(i);
+          }
+        } else {
+          visibleTrackIndices.add(i);
+        }
+        updateRenderer();
+        updateMixerUI();
       });
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'tab-mixer-name';
       nameSpan.textContent = track.name + (td.isDrum ? ' [drums]' : '');
 
-      item.appendChild(cb);
+      item.appendChild(audioCb);
+      item.appendChild(visibilityBtn);
       item.appendChild(nameSpan);
 
       // Click on the name to select as primary (only non-drum)
@@ -249,15 +310,20 @@ export function renderTabViewer(container) {
       mixerWrap.appendChild(item);
     }
 
-    updateMixerSelection();
+    updateMixerUI();
   }
 
-  function updateMixerSelection() {
+  function updateMixerUI() {
     const items = mixerWrap.querySelectorAll('.tab-mixer-track');
     items.forEach(item => {
       const idx = parseInt(item.dataset.playerIndex);
       const td = allTrackData[idx];
       item.classList.toggle('selected', td && td.trackIndex === selectedTrackIndex);
+      
+      const visBtn = item.querySelector('.visibility-toggle');
+      if (visBtn) {
+        visBtn.style.opacity = visibleTrackIndices.has(idx) ? '1' : '0.3';
+      }
     });
   }
 

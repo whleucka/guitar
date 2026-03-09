@@ -62,33 +62,59 @@
   margin-top: 0.6rem;
   padding-top: 0.6rem;
   border-top: 1px solid var(--border-color);
+  transition: max-height 0.3s ease-out, opacity 0.3s, margin 0.3s;
+  overflow: hidden;
 }
 
-.tab-mixer:empty {
+.tab-mixer.hidden {
   display: none;
 }
 
 .tab-mixer-track {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.5rem;
   font-size: 0.78rem;
   color: var(--text-muted);
   cursor: default;
-  padding: 0.15rem 0.4rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 3px;
-  transition: background 0.15s, color 0.15s;
+  background: var(--bg-surface-alt);
+  border: 1px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .tab-mixer-track.selected {
   background: var(--bg-surface);
   color: var(--accent-gold);
+  border-color: var(--accent-gold-muted);
 }
 
 .tab-mixer-track input[type="checkbox"] {
   accent-color: var(--accent-blue);
   margin: 0;
   cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+.visibility-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s;
+  color: var(--text-primary);
+}
+
+.visibility-toggle:hover {
+  opacity: 1 !important;
 }
 
 .tab-mixer-name {
@@ -109,15 +135,16 @@
 }
 
 .tab-canvas-wrap {
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 70vh; /* Show a good chunk of bars */
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: var(--bg-surface) var(--bg-secondary);
 }
 
 .tab-canvas-wrap::-webkit-scrollbar {
-  height: 8px;
+  width: 8px;
 }
 
 .tab-canvas-wrap::-webkit-scrollbar-track {

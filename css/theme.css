@@ -3,6 +3,7 @@
   --bg-primary: #24283b;
   --bg-secondary: #1f2335;
   --bg-surface: #292e42;
+  --bg-surface-alt: rgba(41, 46, 66, 0.4);
 
   /* Text */
   --text-primary: #c0caf5;
@@ -13,6 +14,7 @@
   --accent-blue: #7aa2f7;
   --accent-red: #f7768e;
   --accent-gold: #e0af68;
+  --accent-gold-muted: rgba(224, 175, 104, 0.3);
   --accent-green: #9ece6a;
 
   /* Fretboard */

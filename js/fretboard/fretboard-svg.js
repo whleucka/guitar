@@ -159,13 +159,6 @@ export function renderFretboard() {
       text.textContent = noteInfo.display;
       noteG.appendChild(text);
 
-      const anno = svgEl('text', {
-        class: 'fb-note-anno',
-        x: mx, y: sy - 14,
-        'font-size': '8',
-      });
-      noteG.appendChild(anno);
-
       g.appendChild(noteG);
       svg.appendChild(g);
 

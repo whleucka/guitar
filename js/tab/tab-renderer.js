@@ -5,12 +5,14 @@ const TAB = {
   beatSpacing: 32,
   measurePadding: 20,
   marginLeft: 50,
-  marginTop: 40,
+  marginRight: 20,
+  marginTop: 60, // Space for section labels/bar numbers
   marginBottom: 20,
+  systemSpacing: 80, // Space between different systems (rows)
   cursorWidth: 3,
   fontSize: 13,
   sectionFontSize: 11,
-  minMeasureWidth: 120,
+  minMeasureWidth: 150,
 };
 
 export class TabRenderer {
@@ -24,15 +26,26 @@ export class TabRenderer {
     this.wrap.appendChild(this.canvas);
     container.appendChild(this.wrap);
 
-    this.timeline = null;
-    this.measures = null;
-    this.stringCount = 6;
-    this.beatXPositions = [];
-    this.measureXPositions = [];
+    this.track = null; // { timeline, measures, stringCount, name }
+    this.beatPositions = []; // Array of { x, y, systemHeight, staffY } (per beat index)
+    this.systems = []; // Array of { measures, y, height }
     this.totalWidth = 0;
+    this.totalHeight = 0;
     this.cursorIndex = -1;
     this.loopA = null;
     this.loopB = null;
+
+    // Handle window resize to re-layout
+    this._resizeTimeout = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(this._resizeTimeout);
+      this._resizeTimeout = setTimeout(() => {
+        if (this.track) {
+          this._computeLayout();
+          this._render();
+        }
+      }, 200);
+    });
 
     // Click handler for loop setting
     this.canvas.addEventListener('click', (e) => {
@@ -43,10 +56,8 @@ export class TabRenderer {
   /**
    * Set tab data and render.
    */
-  setData(timeline, measures, stringCount = 6) {
-    this.timeline = timeline;
-    this.measures = measures;
-    this.stringCount = stringCount;
+  setData(trackData) {
+    this.track = trackData;
     this.cursorIndex = -1;
     this.loopA = null;
     this.loopB = null;
@@ -77,13 +88,19 @@ export class TabRenderer {
   }
 
   /**
-   * Get timeline index from canvas click X position.
+   * Get timeline index from canvas click coordinates.
    */
-  getIndexAtX(canvasX) {
+  getIndexAtPoint(canvasX, canvasY) {
     let closest = 0;
     let minDist = Infinity;
-    for (let i = 0; i < this.beatXPositions.length; i++) {
-      const dist = Math.abs(this.beatXPositions[i] - canvasX);
+    for (let i = 0; i < this.beatPositions.length; i++) {
+      const pos = this.beatPositions[i];
+      if (!pos) continue;
+      
+      const dx = pos.x - canvasX;
+      const dy = (pos.y + pos.systemHeight / 2) - canvasY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
       if (dist < minDist) {
         minDist = dist;
         closest = i;
@@ -96,60 +113,105 @@ export class TabRenderer {
     this._onCanvasClick = (e) => {
       const rect = this.canvas.getBoundingClientRect();
       const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
       const canvasX = (e.clientX - rect.left) * scaleX;
-      const index = this.getIndexAtX(canvasX);
+      const canvasY = (e.clientY - rect.top) * scaleY;
+      const index = this.getIndexAtPoint(canvasX, canvasY);
       handler(index);
     };
   }
 
   _computeLayout() {
-    if (!this.timeline || !this.measures) return;
+    if (!this.track) return;
 
-    const beatXs = [];
-    const measureXs = [];
-    let x = TAB.marginLeft;
+    const containerWidth = this.wrap.clientWidth || 1000;
+    const availableWidth = Math.max(containerWidth - TAB.marginLeft - TAB.marginRight, 400);
+    this.totalWidth = containerWidth;
 
-    for (const measure of this.measures) {
-      measureXs.push(x);
-
+    const beatPos = [];
+    const systems = [];
+    
+    // Group measures into rows (systems)
+    let currentSystemMeasures = [];
+    let currentSystemWidth = 0;
+    
+    for (const measure of this.track.measures) {
       const numBeats = measure.beatIndices.length || 1;
-      const measureWidth = Math.max(
+      const measureMinWidth = Math.max(
         TAB.minMeasureWidth,
         numBeats * TAB.beatSpacing + TAB.measurePadding * 2
       );
 
-      for (let i = 0; i < measure.beatIndices.length; i++) {
-        const beatX = x + TAB.measurePadding + i * (measureWidth - TAB.measurePadding * 2) / Math.max(numBeats, 1);
-        beatXs[measure.beatIndices[i]] = beatX;
+      if (currentSystemWidth + measureMinWidth > availableWidth && currentSystemMeasures.length > 0) {
+        systems.push({ measures: currentSystemMeasures, width: currentSystemWidth });
+        currentSystemMeasures = [measure];
+        currentSystemWidth = measureMinWidth;
+      } else {
+        currentSystemMeasures.push(measure);
+        currentSystemWidth += measureMinWidth;
       }
-
-      x += measureWidth;
+    }
+    if (currentSystemMeasures.length > 0) {
+      systems.push({ measures: currentSystemMeasures, width: currentSystemWidth });
     }
 
-    this.beatXPositions = beatXs;
-    this.measureXPositions = measureXs;
-    this.totalWidth = x + TAB.marginLeft;
+    const staffHeight = (this.track.stringCount - 1) * TAB.lineSpacing;
+    const systemHeight = staffHeight + TAB.marginTop + TAB.marginBottom;
+    
+    // Add extra space at top for the instrument name (only once)
+    const titleHeight = 30;
+    let currentY = titleHeight;
 
-    const staffHeight = (this.stringCount - 1) * TAB.lineSpacing;
-    const totalHeight = TAB.marginTop + staffHeight + TAB.marginBottom;
+    for (let sIdx = 0; sIdx < systems.length; sIdx++) {
+      const system = systems[sIdx];
+      system.y = currentY;
+      system.height = systemHeight;
+
+      const extraWidth = availableWidth - system.width;
+      const widthPerMeasure = extraWidth / system.measures.length;
+
+      let currentX = TAB.marginLeft;
+      for (const measure of system.measures) {
+        const numBeats = measure.beatIndices.length || 1;
+        const baseWidth = Math.max(TAB.minMeasureWidth, numBeats * TAB.beatSpacing + TAB.measurePadding * 2);
+        const actualMeasureWidth = baseWidth + widthPerMeasure;
+        
+        measure._renderedX = currentX;
+        measure._renderedWidth = actualMeasureWidth;
+
+        for (let i = 0; i < measure.beatIndices.length; i++) {
+          const beatX = currentX + TAB.measurePadding + i * (actualMeasureWidth - TAB.measurePadding * 2) / Math.max(numBeats, 1);
+          const beatIdx = measure.beatIndices[i];
+          
+          beatPos[beatIdx] = {
+            x: beatX,
+            y: currentY,
+            systemHeight: systemHeight,
+            staffY: currentY + TAB.marginTop
+          };
+        }
+
+        currentX += actualMeasureWidth;
+      }
+      currentY += systemHeight + TAB.systemSpacing;
+    }
+
+    this.beatPositions = beatPos;
+    this.systems = systems;
+    this.totalHeight = currentY;
 
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = this.totalWidth * dpr;
-    this.canvas.height = totalHeight * dpr;
+    this.canvas.height = this.totalHeight * dpr;
     this.canvas.style.width = this.totalWidth + 'px';
-    this.canvas.style.height = totalHeight + 'px';
+    this.canvas.style.height = this.totalHeight + 'px';
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   _render() {
     const ctx = this.ctx;
-    const { stringCount, timeline, measures } = this;
-    if (!timeline || !measures) return;
+    if (!this.track || this.systems.length === 0) return;
 
-    const staffHeight = (stringCount - 1) * TAB.lineSpacing;
-    const totalHeight = TAB.marginTop + staffHeight + TAB.marginBottom;
-
-    // Get theme colors from CSS
     const style = getComputedStyle(document.documentElement);
     const bgColor = style.getPropertyValue('--bg-primary').trim() || '#24283b';
     const lineColor = style.getPropertyValue('--fb-fret-wire').trim() || '#565f89';
@@ -159,277 +221,234 @@ export class TabRenderer {
     const accentBlue = style.getPropertyValue('--accent-blue').trim() || '#7aa2f7';
     const accentRed = style.getPropertyValue('--accent-red').trim() || '#f7768e';
     const sectionColor = style.getPropertyValue('--accent-green').trim() || '#9ece6a';
-    const surfaceColor = style.getPropertyValue('--bg-surface').trim() || '#292e42';
 
-    // Clear
     ctx.fillStyle = bgColor;
-    ctx.fillRect(0, 0, this.totalWidth, totalHeight);
+    ctx.fillRect(0, 0, this.totalWidth, this.totalHeight);
 
-    // Loop region highlight
-    if (this.loopA !== null && this.loopB !== null) {
-      const ax = this.beatXPositions[this.loopA] || 0;
-      const bx = this.beatXPositions[this.loopB] || 0;
-      ctx.fillStyle = 'rgba(122, 162, 247, 0.08)';
-      ctx.fillRect(ax - 5, 0, bx - ax + 10, totalHeight);
-    }
+    const { stringCount, timeline, name } = this.track;
+    const staffHeight = (stringCount - 1) * TAB.lineSpacing;
 
-    // Tab lines — top line = high e (string 5), bottom line = low E (string 0)
-    // Standard tab: highest-pitched string at top
-    ctx.strokeStyle = lineColor;
-    ctx.lineWidth = 0.5;
-    for (let s = 0; s < stringCount; s++) {
-      const y = TAB.marginTop + s * TAB.lineSpacing;
-      ctx.beginPath();
-      ctx.moveTo(TAB.marginLeft - 10, y);
-      ctx.lineTo(this.totalWidth - TAB.marginLeft + 10, y);
-      ctx.stroke();
-    }
+    // Instrument Name (Once at top)
+    ctx.fillStyle = sectionColor;
+    ctx.font = `bold 11px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText(name.toUpperCase(), TAB.marginLeft, 20);
 
-    // TAB clef label
-    ctx.fillStyle = mutedColor;
-    ctx.font = `bold 11px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
-    ctx.textAlign = 'center';
-    const midY = TAB.marginTop + staffHeight / 2;
-    ctx.fillText('T', 20, midY - 7);
-    ctx.fillText('A', 20, midY + 3);
-    ctx.fillText('B', 20, midY + 13);
+    for (let sIdx = 0; sIdx < this.systems.length; sIdx++) {
+      const system = this.systems[sIdx];
+      const currentY = system.y + TAB.marginTop;
 
-    // Measure barlines + section labels
-    ctx.strokeStyle = lineColor;
-    ctx.lineWidth = 1;
-    for (let m = 0; m < measures.length; m++) {
-      const x = this.measureXPositions[m];
-      ctx.beginPath();
-      ctx.moveTo(x, TAB.marginTop);
-      ctx.lineTo(x, TAB.marginTop + staffHeight);
-      ctx.stroke();
-
-      // Section label
-      if (measures[m].section) {
-        const label = measures[m].section.text || measures[m].section.letter;
-        if (label) {
-          ctx.fillStyle = sectionColor;
-          ctx.font = `bold ${TAB.sectionFontSize}px ${style.getPropertyValue('--font-main').trim() || 'sans-serif'}`;
-          ctx.textAlign = 'left';
-          ctx.fillText(label, x + 4, TAB.marginTop - 10);
-        }
+      // Tab lines
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 0.5;
+      for (let s = 0; s < stringCount; s++) {
+        const y = currentY + s * TAB.lineSpacing;
+        ctx.beginPath();
+        ctx.moveTo(TAB.marginLeft - 10, y);
+        ctx.lineTo(this.totalWidth - TAB.marginRight + 10, y);
+        ctx.stroke();
       }
 
-      // Bar number
+      // TAB clef
       ctx.fillStyle = mutedColor;
-      ctx.font = `9px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
-      ctx.textAlign = 'left';
-      ctx.fillText(m + 1, x + 3, TAB.marginTop - 3);
-    }
+      ctx.font = `bold 11px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
+      ctx.textAlign = 'center';
+      const midY = currentY + staffHeight / 2;
+      ctx.fillText('T', 20, midY - 7);
+      ctx.fillText('A', 20, midY + 3);
+      ctx.fillText('B', 20, midY + 13);
 
-    // Final barline
-    if (this.measureXPositions.length > 0) {
-      const lastX = this.totalWidth - TAB.marginLeft;
+      // Measures
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 1;
+      for (const measure of system.measures) {
+        const x = measure._renderedX;
+        ctx.beginPath();
+        ctx.moveTo(x, currentY);
+        ctx.lineTo(x, currentY + staffHeight);
+        ctx.stroke();
+
+        if (measure.section) {
+          const label = measure.section.text || measure.section.letter;
+          if (label) {
+            ctx.fillStyle = sectionColor;
+            ctx.font = `bold ${TAB.sectionFontSize}px sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.fillText(label, x + 4, currentY - 20);
+          }
+        }
+
+        ctx.fillStyle = mutedColor;
+        ctx.font = `9px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
+        ctx.textAlign = 'left';
+        ctx.fillText(measure.masterBarIndex + 1, x + 3, currentY - 5);
+      }
+
+      // Final system barline
+      const lastX = this.totalWidth - TAB.marginRight;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(lastX, TAB.marginTop);
-      ctx.lineTo(lastX, TAB.marginTop + staffHeight);
+      ctx.moveTo(lastX, currentY);
+      ctx.lineTo(lastX, currentY + staffHeight);
       ctx.stroke();
-    }
 
-    // --- Palm Muting Brackets ---
-    let pmStart = null;
-    for (let i = 0; i < timeline.length; i++) {
-      const isPM = timeline[i].notes.some(n => n.palmMuted);
-      const nextIsPM = timeline[i+1]?.notes.some(n => n.palmMuted);
+      // --- Palm Muting Brackets (System-aware) ---
+      let pmStart = null;
+      for (const measure of system.measures) {
+        for (const beatIdx of measure.beatIndices) {
+          const isPM = timeline[beatIdx].notes.some(n => n.palmMuted);
+          const nextIsPM = timeline[beatIdx + 1]?.notes.some(n => n.palmMuted);
+          // Only start/end if on same system row
+          const nextIsOnSameRow = (beatIdx + 1 < timeline.length) && 
+                                  this.beatPositions[beatIdx + 1] && 
+                                  this.beatPositions[beatIdx + 1].y === system.y;
 
-      if (isPM && pmStart === null) {
-        pmStart = this.beatXPositions[i];
-      }
-      
-      if (pmStart !== null && (!nextIsPM || i === timeline.length - 1)) {
-        const endX = this.beatXPositions[i];
-        const y = TAB.marginTop - 15;
-        
-        ctx.strokeStyle = sectionColor;
-        ctx.fillStyle = sectionColor;
-        ctx.lineWidth = 1;
-        ctx.font = "bold 9px sans-serif";
-        ctx.textAlign = "left";
-        ctx.fillText("P.M.", pmStart, y);
-        
-        const textWidth = ctx.measureText("P.M. ").width;
-        ctx.beginPath();
-        ctx.setLineDash([2, 2]);
-        ctx.moveTo(pmStart + textWidth, y - 3);
-        ctx.lineTo(endX + 5, y - 3);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        
-        // Cap
-        ctx.beginPath();
-        ctx.moveTo(endX + 5, y - 6);
-        ctx.lineTo(endX + 5, y);
-        ctx.stroke();
-        
-        pmStart = null;
-      }
-    }
-
-    // Fret numbers
-    ctx.font = `bold ${TAB.fontSize}px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    for (let i = 0; i < timeline.length; i++) {
-      const event = timeline[i];
-      const x = this.beatXPositions[i];
-      if (x === undefined) continue;
-
-      // --- Strumming Pattern (Down/Up) ---
-      const stroke = event.notes.find(n => n.pickStroke && n.pickStroke !== 'None')?.pickStroke;
-      if (stroke) {
-        ctx.fillStyle = mutedColor;
-        ctx.font = "bold 10px sans-serif";
-        const label = stroke === 'Down' ? 'Π' : 'V'; // Traditional strum symbols
-        ctx.fillText(label, x, TAB.marginTop + staffHeight + 10);
-        ctx.font = `bold ${TAB.fontSize}px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
-      }
-
-      for (const note of event.notes) {
-        if (note.tieDestination) continue; // Don't redraw tied notes
-        if (note.string < 0 || note.string >= stringCount) continue;
-
-        // String 5 (high e) at top (y=0), string 0 (low E) at bottom
-        const y = TAB.marginTop + (stringCount - 1 - note.string) * TAB.lineSpacing;
-
-        // Background to cover the tab line
-        const textW = note.fret >= 10 ? 16 : 10;
-        ctx.fillStyle = bgColor;
-        ctx.fillRect(x - textW / 2 - 1, y - 7, textW + 2, 14);
-
-        // Fret number
-        const isCursor = i === this.cursorIndex;
-        ctx.fillStyle = isCursor ? cursorColor : textColor;
-        
-        if (note.muted) {
-          ctx.fillText('X', x, y);
-        } else {
-          ctx.fillText(note.fret, x, y);
-        }
-
-        // Annotations
-        let annoText = '';
-        if (note.bended) annoText = 'B';
-        else if (note.harmonic) annoText = 'NH';
-
-        if (annoText) {
-          ctx.fillStyle = sectionColor;
-          ctx.font = `bold 8px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
-          ctx.fillText(annoText, x, y - 10);
-          ctx.font = `bold ${TAB.fontSize}px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
-        }
-
-        // --- Technique Graphics (Slides and Legato) ---
-        if (note.slide || note.hopoOrigin) {
-          // Find next note on this string to connect to
-          let nextX = null;
-          let nextY = null;
-          let nextFret = null;
-
-          for (let j = i + 1; j < Math.min(i + 10, timeline.length); j++) {
-            const nextEvent = timeline[j];
-            const targetNote = nextEvent.notes.find(n => n.string === note.string);
-            if (targetNote) {
-              nextX = this.beatXPositions[j];
-              nextY = TAB.marginTop + (stringCount - 1 - targetNote.string) * TAB.lineSpacing;
-              nextFret = targetNote.fret;
-              break;
-            }
+          if (isPM && pmStart === null) {
+            pmStart = this.beatPositions[beatIdx].x;
           }
-
-          if (nextX !== null) {
+          
+          if (pmStart !== null && (!nextIsPM || !nextIsOnSameRow)) {
+            const endX = this.beatPositions[beatIdx].x;
+            const y = currentY - 15;
+            
             ctx.strokeStyle = sectionColor;
+            ctx.fillStyle = sectionColor;
             ctx.lineWidth = 1;
-
-            if (note.slide) {
-              // Diagonal slide line
-              const xOff = 8;
-              const yOff = note.fret < nextFret ? 3 : -3;
+            ctx.font = "bold 9px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText("P.M.", pmStart, y);
+            
+            if (endX > pmStart) {
+              const textWidth = ctx.measureText("P.M. ").width;
               ctx.beginPath();
-              ctx.moveTo(x + xOff, y + yOff);
-              ctx.lineTo(nextX - xOff, nextY - yOff);
+              ctx.setLineDash([2, 2]);
+              ctx.moveTo(pmStart + textWidth, y - 3);
+              ctx.lineTo(endX + 5, y - 3);
               ctx.stroke();
-            } else if (note.hopoOrigin) {
-              // Legato arc (slur)
-              const xOff = 6;
-              const midX = (x + nextX) / 2;
-              const arcHeight = 12;
+              ctx.setLineDash([]);
+              
+              // Cap
               ctx.beginPath();
-              ctx.moveTo(x + xOff, y - 5);
-              ctx.quadraticCurveTo(midX, y - 5 - arcHeight, nextX - xOff, nextY - 5);
+              ctx.moveTo(endX + 5, y - 6);
+              ctx.lineTo(endX + 5, y);
               ctx.stroke();
+            }
+            
+            pmStart = null;
+          }
+        }
+      }
 
-              // Add small H or P above the arc
-              const label = nextFret > note.fret ? 'H' : 'P';
+      // Notes
+      for (const measure of system.measures) {
+        for (const beatIdx of measure.beatIndices) {
+          const event = timeline[beatIdx];
+          if (!event) continue;
+          const x = this.beatPositions[beatIdx].x;
+
+          const stroke = event.notes.find(n => n.pickStroke && n.pickStroke !== 'None')?.pickStroke;
+          if (stroke) {
+            ctx.fillStyle = mutedColor;
+            ctx.font = "bold 9px sans-serif";
+            const label = stroke === 'Down' ? 'Π' : 'V';
+            ctx.fillText(label, x, currentY + staffHeight + 10);
+          }
+
+          for (const note of event.notes) {
+            if (note.tieDestination) continue;
+            if (note.string < 0 || note.string >= stringCount) continue;
+
+            const y = currentY + (stringCount - 1 - note.string) * TAB.lineSpacing;
+            const textW = note.fret >= 10 ? 14 : 9;
+            
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(x - textW / 2 - 1, y - 6, textW + 2, 12);
+
+            const isCursor = beatIdx === this.cursorIndex;
+            ctx.fillStyle = isCursor ? cursorColor : textColor;
+            ctx.font = `bold ${TAB.fontSize}px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            if (note.muted) ctx.fillText('X', x, y);
+            else ctx.fillText(note.fret, x, y);
+
+            if (note.harmonic || note.bended) {
               ctx.fillStyle = sectionColor;
-              ctx.font = "bold 8px sans-serif";
-              ctx.fillText(label, midX, y - 5 - arcHeight);
-              ctx.font = `bold ${TAB.fontSize}px ${style.getPropertyValue('--font-mono').trim() || 'monospace'}`;
+              ctx.font = "bold 7px sans-serif";
+              ctx.fillText(note.harmonic ? 'NH' : 'B', x, y - 10);
+            }
+
+            if (note.slide || note.hopoOrigin) {
+              let nextBeat = null;
+              for (let j = beatIdx + 1; j < Math.min(beatIdx + 10, timeline.length); j++) {
+                if (this.beatPositions[j] && this.beatPositions[j].y === system.y) {
+                  const target = timeline[j].notes.find(n => n.string === note.string);
+                  if (target) { nextBeat = j; break; }
+                } else break;
+              }
+
+              if (nextBeat !== null) {
+                const nextX = this.beatPositions[nextBeat].x;
+                const nextY = currentY + (stringCount - 1 - note.string) * TAB.lineSpacing;
+                ctx.strokeStyle = sectionColor;
+                ctx.lineWidth = 1;
+                if (note.slide) {
+                  ctx.beginPath(); ctx.moveTo(x + 7, y); ctx.lineTo(nextX - 7, nextY); ctx.stroke();
+                } else {
+                  const midX = (x + nextX) / 2;
+                  ctx.beginPath(); ctx.moveTo(x + 5, y - 4); ctx.quadraticCurveTo(midX, y - 12, nextX - 5, nextY - 4); ctx.stroke();
+                }
+              }
             }
           }
         }
       }
 
-      // Rest marker
-      if (event.notes.length === 0 && !event.isRest) {
-        // Empty beat, skip
+      // Cursor
+      if (this.cursorIndex >= 0) {
+        const pos = this.beatPositions[this.cursorIndex];
+        if (pos && pos.y === system.y) {
+          ctx.strokeStyle = cursorColor;
+          ctx.lineWidth = TAB.cursorWidth;
+          ctx.globalAlpha = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(pos.x, system.y + TAB.marginTop - 10);
+          ctx.lineTo(pos.x, system.y + system.height - TAB.marginBottom + 10);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
       }
     }
 
-    // Cursor line
-    if (this.cursorIndex >= 0 && this.cursorIndex < this.beatXPositions.length) {
-      const cx = this.beatXPositions[this.cursorIndex];
-      if (cx !== undefined) {
-        ctx.strokeStyle = cursorColor;
-        ctx.lineWidth = TAB.cursorWidth;
-        ctx.globalAlpha = 0.6;
-        ctx.beginPath();
-        ctx.moveTo(cx, TAB.marginTop - 5);
-        ctx.lineTo(cx, TAB.marginTop + staffHeight + 5);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-    }
-
-    // Loop markers
-    if (this.loopA !== null && this.beatXPositions[this.loopA] !== undefined) {
-      this._drawLoopMarker(this.beatXPositions[this.loopA], 'A', accentBlue, staffHeight);
-    }
-    if (this.loopB !== null && this.beatXPositions[this.loopB] !== undefined) {
-      this._drawLoopMarker(this.beatXPositions[this.loopB], 'B', accentRed, staffHeight);
-    }
+    if (this.loopA !== null) this._drawLoopMarker(this.beatPositions[this.loopA], 'A', accentBlue);
+    if (this.loopB !== null) this._drawLoopMarker(this.beatPositions[this.loopB], 'B', accentRed);
   }
 
-  _drawLoopMarker(x, label, color, staffHeight) {
+  _drawLoopMarker(pos, label, color) {
+    if (!pos) return;
     const ctx = this.ctx;
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
-    ctx.setLineDash([4, 4]);
     ctx.beginPath();
-    ctx.moveTo(x, TAB.marginTop - 5);
-    ctx.lineTo(x, TAB.marginTop + staffHeight + 5);
+    ctx.moveTo(pos.x, pos.y + TAB.marginTop - 10);
+    ctx.lineTo(pos.x, pos.y + pos.systemHeight - TAB.marginBottom + 10);
     ctx.stroke();
-    ctx.setLineDash([]);
-
     ctx.fillStyle = color;
     ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(label, x, TAB.marginTop + staffHeight + 15);
+    ctx.fillText(label, pos.x, pos.y + pos.systemHeight - 2);
   }
 
   _scrollToCursor() {
     if (this.cursorIndex < 0) return;
-    const cx = this.beatXPositions[this.cursorIndex];
-    if (cx === undefined) return;
+    const pos = this.beatPositions[this.cursorIndex];
+    if (!pos) return;
 
-    const wrapWidth = this.wrap.clientWidth;
-    const targetScroll = cx - wrapWidth / 2;
-    this.wrap.scrollLeft = Math.max(0, targetScroll);
+    const wrapHeight = this.wrap.clientHeight;
+    const scrollY = this.wrap.scrollTop;
+    if (pos.y < scrollY + 50 || pos.y > scrollY + wrapHeight - 150) {
+      this.wrap.scrollTo({ top: Math.max(0, pos.y - 100), behavior: 'smooth' });
+    }
   }
 }

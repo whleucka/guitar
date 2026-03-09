@@ -85,21 +85,6 @@
   pointer-events: none;
 }
 
-.fb-note-anno {
-  fill: var(--accent-gold);
-  font-family: var(--font-mono);
-  font-weight: 700;
-  text-anchor: middle;
-  pointer-events: none;
-  opacity: 0.9;
-  text-shadow: 0 0 2px black;
-}
-
-.fb-note.playing .fb-note-anno {
-  fill: white;
-  font-weight: 800;
-}
-
 /* Open string labels (left of nut) */
 .fb-open-label {
   fill: var(--text-secondary);
