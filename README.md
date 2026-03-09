@@ -1,4 +1,4 @@
-# Guitar Learning Tool
+# RiffLogic
 
 > This is a work in progress.
 
