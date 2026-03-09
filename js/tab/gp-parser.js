@@ -111,7 +111,13 @@ function parseGPIF(doc) {
     const dynEl = el.querySelector('Dynamic');
     const dynamic = dynEl ? dynEl.textContent.trim() : 'MF';
 
-    beats.set(id, { id, rhythmId, noteIds, isRest, dynamic });
+    // pickStroke is a beat-level property in the GPIF format
+    const pickStrokeEl = el.querySelector('Properties > Property[name="PickStroke"]');
+    const pickStroke = pickStrokeEl
+      ? (textContent(pickStrokeEl, 'Value') || textContent(pickStrokeEl, 'Direction') || 'None')
+      : null;
+
+    beats.set(id, { id, rhythmId, noteIds, isRest, dynamic, pickStroke });
   }
 
   // --- Voices ---

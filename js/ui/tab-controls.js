@@ -5,7 +5,11 @@ import { buildTimeline } from '../tab/timeline.js';
 import { TabRenderer } from '../tab/tab-renderer.js';
 import { TabPlayer } from '../tab/tab-player.js';
 import { setVoiceType, VOICE_TYPES } from '../audio/synth-voice.js';
-import { events, TAB_LOADED, TAB_BEAT_ON, TAB_BEAT_OFF, TAB_POSITION, TAB_STOP } from '../events.js';
+import { events, TAB_LOADED, TAB_BEAT_ON, TAB_POSITION, TAB_STOP } from '../events.js';
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+const ACCEPTED_EXTENSIONS = ['.gp'];
+const SEEK_STEP = 5; // beats to skip on arrow key press
 
 export function renderTabViewer(container) {
   const group = document.createElement('div');
@@ -14,20 +18,14 @@ export function renderTabViewer(container) {
   // --- Header ---
   const header = document.createElement('div');
   header.className = 'control-group tab-header';
-  
+
   const titleRow = document.createElement('div');
   titleRow.className = 'tab-title-row';
-  titleRow.style.display = 'flex';
-  titleRow.style.justifyContent = 'space-between';
-  titleRow.style.alignItems = 'center';
-  titleRow.style.marginBottom = '0.75rem';
   titleRow.innerHTML = '<h3 style="margin:0">Tab Viewer</h3>';
 
   const mixerToggle = document.createElement('button');
-  mixerToggle.className = 'icon-btn';
-  mixerToggle.innerHTML = 'Tracks &#9660;'; // Down arrow
-  mixerToggle.style.fontSize = '0.7rem';
-  mixerToggle.style.padding = '0.2rem 0.5rem';
+  mixerToggle.className = 'icon-btn tab-mixer-toggle';
+  mixerToggle.innerHTML = 'Tracks &#9660;';
   titleRow.appendChild(mixerToggle);
   header.appendChild(titleRow);
 
@@ -38,7 +36,7 @@ export function renderTabViewer(container) {
   // File picker
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
-  fileInput.accept = '.gp,.gp3,.gp4,.gp5,.gpx';
+  fileInput.accept = '.gp';
   fileInput.style.display = 'none';
 
   const fileBtn = document.createElement('button');
@@ -55,14 +53,14 @@ export function renderTabViewer(container) {
   // Voice/Instrument Selector
   const voiceSelect = document.createElement('select');
   voiceSelect.className = 'scale-select';
-  
+
   const voiceOptions = [
     { value: VOICE_TYPES.KARPLUS, label: 'Default Synth' },
     { value: VOICE_TYPES.ACOUSTIC, label: 'Acoustic Guitar' },
     { value: VOICE_TYPES.ELECTRIC_CLEAN, label: 'Electric Clean' },
     { value: VOICE_TYPES.ELECTRIC_MUTED, label: 'Electric Muted' },
     { value: VOICE_TYPES.OVERDRIVEN, label: 'Overdriven' },
-    { value: VOICE_TYPES.DISTORTION, label: 'Distortion' }
+    { value: VOICE_TYPES.DISTORTION, label: 'Distortion' },
   ];
 
   voiceOptions.forEach(opt => {
@@ -90,18 +88,17 @@ export function renderTabViewer(container) {
 
   // Row 2: Transport + Tempo + Loop + Metronome
   const row2 = document.createElement('div');
-  row2.className = 'tab-controls-row';
-  row2.style.marginTop = '0.5rem';
+  row2.className = 'tab-controls-row tab-controls-row-transport';
 
   // Transport
   const playBtn = document.createElement('button');
   playBtn.className = 'toggle-btn';
-  playBtn.textContent = '▶ Play';
+  playBtn.textContent = '\u25B6 Play';
   playBtn.disabled = true;
 
   const stopBtn = document.createElement('button');
   stopBtn.className = 'toggle-btn';
-  stopBtn.textContent = '■ Stop';
+  stopBtn.textContent = '\u25A0 Stop';
   stopBtn.disabled = true;
 
   // Tempo control
@@ -136,7 +133,7 @@ export function renderTabViewer(container) {
 
   const loopClearBtn = document.createElement('button');
   loopClearBtn.className = 'caged-btn';
-  loopClearBtn.textContent = '✕';
+  loopClearBtn.textContent = '\u2715';
   loopClearBtn.title = 'Clear loop';
   loopClearBtn.disabled = true;
 
@@ -153,7 +150,7 @@ export function renderTabViewer(container) {
   // Metronome toggle
   const metroBtn = document.createElement('button');
   metroBtn.className = 'caged-btn';
-  metroBtn.textContent = '⏱';
+  metroBtn.textContent = '\u23F1';
   metroBtn.title = 'Toggle Metronome';
   metroBtn.disabled = true;
 
@@ -181,7 +178,7 @@ export function renderTabViewer(container) {
 
   // --- Track mixer (built dynamically on file load) ---
   const mixerWrap = document.createElement('div');
-  mixerWrap.className = 'tab-mixer hidden'; // Hidden by default
+  mixerWrap.className = 'tab-mixer hidden';
   header.appendChild(mixerWrap);
 
   group.appendChild(header);
@@ -197,7 +194,7 @@ export function renderTabViewer(container) {
   const renderer = new TabRenderer(canvasContainer);
   const player = new TabPlayer();
   let score = null;
-  let allTrackData = []; // [{ trackIndex, timeline, measures, isDrum }]
+  let allTrackData = [];
   let selectedTrackIndex = null;
   let loopA = null;
   let loopB = null;
@@ -228,7 +225,7 @@ export function renderTabViewer(container) {
   }
 
   /**
-   * Initialize the player with all tracks (called once on file load).
+   * Initialize the player with all tracks.
    */
   function initPlayer(primaryTrackIndex) {
     const primaryIdx = allTrackData.findIndex(t => t.trackIndex === primaryTrackIndex);
@@ -250,7 +247,7 @@ export function renderTabViewer(container) {
    */
   function updateRenderer() {
     if (!score || selectedTrackIndex === null) return;
-    
+
     const td = allTrackData.find(t => t.trackIndex === selectedTrackIndex);
     if (!td) return;
 
@@ -259,7 +256,7 @@ export function renderTabViewer(container) {
       timeline: td.timeline,
       measures: td.measures,
       stringCount: track.stringCount,
-      name: track.name
+      name: track.name,
     });
   }
 
@@ -279,9 +276,7 @@ export function renderTabViewer(container) {
     loopB = null;
     settingLoop = null;
 
-    // Update which track is primary in the player (preserves mute states)
     player.setPrimary(trackDataIdx);
-
     updateRenderer();
     updateMixerUI();
   }
@@ -301,7 +296,6 @@ export function renderTabViewer(container) {
       item.className = 'tab-mixer-track';
       item.dataset.playerIndex = i;
 
-      // Audio mute checkbox
       const audioCb = document.createElement('input');
       audioCb.type = 'checkbox';
       audioCb.checked = true;
@@ -317,7 +311,6 @@ export function renderTabViewer(container) {
       item.appendChild(audioCb);
       item.appendChild(nameSpan);
 
-      // Click on the name to select as primary (only non-drum)
       if (!td.isDrum) {
         nameSpan.addEventListener('click', (e) => {
           e.preventDefault();
@@ -343,26 +336,81 @@ export function renderTabViewer(container) {
     });
   }
 
+  // --- Helpers ---
+
+  function togglePlayPause() {
+    const trackData = allTrackData.find(t => t.trackIndex === selectedTrackIndex);
+    if (!trackData || trackData.timeline.length === 0) return;
+
+    if (player.state === 'playing') {
+      player.pause();
+      playBtn.textContent = '\u25B6 Play';
+    } else if (player.state === 'paused') {
+      player.resume();
+      playBtn.textContent = '\u23F8 Pause';
+    } else {
+      player.play(0);
+      playBtn.textContent = '\u23F8 Pause';
+    }
+  }
+
+  function doStop() {
+    player.stop();
+    playBtn.textContent = '\u25B6 Play';
+    renderer.clearCursor();
+    const trackData = allTrackData.find(t => t.trackIndex === selectedTrackIndex);
+    posDisplay.textContent = trackData
+      ? `Bar 1 / ${trackData.measures.length}`
+      : '';
+  }
+
+  function seekRelative(delta) {
+    if (!player.timeline || player.timeline.length === 0) return;
+    const newIndex = Math.max(0, Math.min(player.currentIndex + delta, player.timeline.length - 1));
+    player.seekTo(newIndex);
+    renderer.setCursor(newIndex);
+  }
+
+  /**
+   * Validate a file before parsing.
+   */
+  function validateFile(file) {
+    if (file.size > MAX_FILE_SIZE) {
+      return `File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_FILE_SIZE / 1024 / 1024} MB.`;
+    }
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!ACCEPTED_EXTENSIONS.includes(ext)) {
+      return `Unsupported format "${ext}". Only modern Guitar Pro (.gp) files are supported.`;
+    }
+    return null;
+  }
+
   // --- File loading ---
   fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Validate
+    const validationError = validateFile(file);
+    if (validationError) {
+      fileBtn.textContent = validationError;
+      setTimeout(() => { fileBtn.textContent = 'Open GP File'; }, 3000);
+      return;
+    }
 
     fileBtn.textContent = 'Loading...';
     try {
       const buf = await file.arrayBuffer();
       score = await parseGPFile(buf);
 
-      songInfo.textContent = `${score.title} — ${score.artist}`;
+      songInfo.textContent = `${score.title} \u2014 ${score.artist}`;
 
-      // Build timelines for all tracks
       buildAllTracks();
 
-      // Populate track selector (filter out drums — drums can't display as tab)
+      // Populate track selector (filter out drums)
       trackSelect.innerHTML = '';
       score.tracks.forEach((t, i) => {
         if (t.isDrum) return;
-        // Only add if we have timeline data
         if (!allTrackData.find(td => td.trackIndex === i)) return;
         const opt = document.createElement('option');
         opt.value = i;
@@ -378,10 +426,8 @@ export function renderTabViewer(container) {
       loopClearBtn.disabled = false;
       metroBtn.disabled = false;
 
-      // Build mixer
       buildMixer();
 
-      // Auto-select first non-drum track and initialize player with all tracks
       if (trackSelect.options.length > 0) {
         trackSelect.selectedIndex = 0;
         const firstTrackIdx = parseInt(trackSelect.value);
@@ -393,8 +439,11 @@ export function renderTabViewer(container) {
       events.emit(TAB_LOADED, { score });
     } catch (err) {
       console.error('GP parse error:', err);
-      fileBtn.textContent = 'Error — Try Again';
-      setTimeout(() => { fileBtn.textContent = 'Open GP File'; }, 2000);
+      const msg = err.message && err.message.includes('Invalid GP')
+        ? err.message
+        : 'Failed to parse file. Ensure it is a valid Guitar Pro (.gp) file.';
+      fileBtn.textContent = msg;
+      setTimeout(() => { fileBtn.textContent = 'Open GP File'; }, 3000);
     }
   });
 
@@ -408,31 +457,8 @@ export function renderTabViewer(container) {
   });
 
   // --- Transport ---
-  playBtn.addEventListener('click', () => {
-    const trackData = allTrackData.find(t => t.trackIndex === selectedTrackIndex);
-    if (!trackData || trackData.timeline.length === 0) return;
-
-    if (player.state === 'playing') {
-      player.pause();
-      playBtn.textContent = '▶ Play';
-    } else if (player.state === 'paused') {
-      player.resume();
-      playBtn.textContent = '⏸ Pause';
-    } else {
-      player.play(0);
-      playBtn.textContent = '⏸ Pause';
-    }
-  });
-
-  stopBtn.addEventListener('click', () => {
-    player.stop();
-    playBtn.textContent = '▶ Play';
-    renderer.clearCursor();
-    const trackData = allTrackData.find(t => t.trackIndex === selectedTrackIndex);
-    posDisplay.textContent = trackData
-      ? `Bar 1 / ${trackData.measures.length}`
-      : '';
-  });
+  playBtn.addEventListener('click', togglePlayPause);
+  stopBtn.addEventListener('click', doStop);
 
   // --- Tempo ---
   tempoSlider.addEventListener('input', () => {
@@ -471,6 +497,7 @@ export function renderTabViewer(container) {
     metroBtn.classList.toggle('active', enabled);
   });
 
+  // --- Canvas click ---
   renderer.onCanvasClick((index) => {
     if (settingLoop === 'a') {
       loopA = index;
@@ -494,6 +521,35 @@ export function renderTabViewer(container) {
     }
   });
 
+  // --- Keyboard shortcuts ---
+  document.addEventListener('keydown', (e) => {
+    // Only handle shortcuts when tab viewer is visible
+    if (!container.offsetParent) return;
+
+    // Don't intercept when typing in inputs
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+    switch (e.code) {
+      case 'Space':
+        e.preventDefault();
+        togglePlayPause();
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        seekRelative(SEEK_STEP);
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        seekRelative(-SEEK_STEP);
+        break;
+      case 'Escape':
+        e.preventDefault();
+        doStop();
+        break;
+    }
+  });
+
   // --- Event listeners for visual sync ---
   events.on(TAB_BEAT_ON, ({ index }) => {
     renderer.setCursor(index);
@@ -501,7 +557,7 @@ export function renderTabViewer(container) {
 
   events.on(TAB_STOP, () => {
     renderer.clearCursor();
-    playBtn.textContent = '▶ Play';
+    playBtn.textContent = '\u25B6 Play';
   });
 
   events.on(TAB_POSITION, ({ masterBarIndex, totalBars }) => {

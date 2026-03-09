@@ -54,7 +54,7 @@ export function setupInteraction(svg, noteElements) {
       entry.noteGroup.classList.remove('active');
       const map = activeChordMap || activeCAGEDMap || activeScaleMap;
       const inMap = map && map.has(key);
-      const inTab = tabMeasureKeys.includes(key) || tabActiveKeys.includes(key);
+      const inTab = tabMeasureKeys.has(key) || tabActiveKeys.has(key);
 
       if (!showAllNotes && !highlightedNotes.has(entry.noteInfo.name) && !inMap && !inTab) {
         entry.noteGroup.classList.remove('visible');
@@ -177,8 +177,8 @@ export function setupInteraction(svg, noteElements) {
   });
 
   // --- Event bus: tab playback note highlights ---
-  let tabMeasureKeys = [];  // all notes in current measure (shown as visible)
-  let tabActiveKeys = [];   // current beat notes (shown as playing)
+  let tabMeasureKeys = new Set();  // all notes in current measure (shown as visible)
+  let tabActiveKeys = new Set();   // current beat notes (shown as playing)
 
   events.on(TAB_BEAT_ON, ({ notes, measureNotes }) => {
     // Clear previous active highlights
@@ -186,12 +186,12 @@ export function setupInteraction(svg, noteElements) {
       const entry = noteElements.get(key);
       if (entry) entry.noteGroup.classList.remove('playing');
     }
-    tabActiveKeys = [];
+    tabActiveKeys = new Set();
 
     // If measure changed, update measure note previews
-    const newMeasureKeys = (measureNotes || []).map(n => `${n.string}-${n.fret}`);
-    const measureChanged = newMeasureKeys.length !== tabMeasureKeys.length ||
-      newMeasureKeys.some((k, i) => k !== tabMeasureKeys[i]);
+    const newMeasureKeys = new Set((measureNotes || []).map(n => `${n.string}-${n.fret}`));
+    const measureChanged = newMeasureKeys.size !== tabMeasureKeys.size ||
+      [...newMeasureKeys].some(k => !tabMeasureKeys.has(k));
 
     if (measureChanged) {
       // Remove old measure highlights
@@ -204,13 +204,12 @@ export function setupInteraction(svg, noteElements) {
       tabMeasureKeys = newMeasureKeys;
 
       // Show all measure notes as visible
-      (measureNotes || []).forEach(n => {
-        const key = `${n.string}-${n.fret}`;
+      for (const key of tabMeasureKeys) {
         const entry = noteElements.get(key);
         if (entry) {
           entry.noteGroup.classList.add('visible', 'scale-tone');
         }
-      });
+      }
     }
 
     // Highlight current beat notes as playing
@@ -220,7 +219,7 @@ export function setupInteraction(svg, noteElements) {
       const entry = noteElements.get(key);
       if (entry) {
         entry.noteGroup.classList.add('visible', 'playing');
-        tabActiveKeys.push(key);
+        tabActiveKeys.add(key);
       }
     }
   });
@@ -236,8 +235,8 @@ export function setupInteraction(svg, noteElements) {
         entry.noteGroup.classList.remove('visible', 'scale-tone');
       }
     }
-    tabActiveKeys = [];
-    tabMeasureKeys = [];
+    tabActiveKeys = new Set();
+    tabMeasureKeys = new Set();
   });
 }
 

@@ -15,9 +15,9 @@ const BACKING_GAIN = 0.35;
 
 export class TabPlayer {
   constructor() {
-    // All tracks: [{ timeline, measures, isDrum, muted, currentIndex }]
+    // All tracks: [{ timeline, measures, measureMap, isDrum, muted, currentIndex }]
     this.tracks = [];
-    this.primaryIndex = 0; // index into this.tracks — drives visuals
+    this.primaryIndex = 0;
 
     this.startTime = 0;
     this.tempoScale = 1.0;
@@ -29,9 +29,13 @@ export class TabPlayer {
     this.metronomeEnabled = false;
     this.nextMetronomeMeasureIndex = 0;
     this.nextMetronomeBeatInMeasure = 0;
+
+    // rAF-based visual sync
+    this._rafId = null;
+    this._pendingVisuals = []; // sorted by scheduledTime
   }
 
-  /** Primary track shortcut */
+  /** Primary track shortcuts */
   get timeline() { return this.tracks[this.primaryIndex]?.timeline || null; }
   get measures() { return this.tracks[this.primaryIndex]?.measures || null; }
   get currentIndex() { return this.tracks[this.primaryIndex]?.currentIndex || 0; }
@@ -43,14 +47,22 @@ export class TabPlayer {
    * @param {number} primaryIndex - which track drives visuals
    */
   setTracks(tracks, primaryIndex = 0) {
-    this.tracks = tracks.map(t => ({
-      timeline: t.timeline,
-      measures: t.measures,
-      isDrum: !!t.isDrum,
-      tuning: t.tuning || [40, 45, 50, 55, 59, 64],
-      muted: false,
-      currentIndex: 0,
-    }));
+    this.tracks = tracks.map(t => {
+      // Build a Map<masterBarIndex, measure> for O(1) lookup
+      const measureMap = new Map();
+      for (const m of t.measures) {
+        measureMap.set(m.masterBarIndex, m);
+      }
+      return {
+        timeline: t.timeline,
+        measures: t.measures,
+        measureMap,
+        isDrum: !!t.isDrum,
+        tuning: t.tuning || [40, 45, 50, 55, 59, 64],
+        muted: false,
+        currentIndex: 0,
+      };
+    });
     this.primaryIndex = primaryIndex;
   }
 
@@ -59,7 +71,6 @@ export class TabPlayer {
    */
   setPrimary(index) {
     if (index < 0 || index >= this.tracks.length) return;
-    // Sync the new primary to the old primary's time position
     if (this.state === 'playing' || this.state === 'paused') {
       const oldPrimary = this.tracks[this.primaryIndex];
       const time = oldPrimary?.timeline[oldPrimary.currentIndex]?.time || 0;
@@ -97,18 +108,19 @@ export class TabPlayer {
     }
 
     this._syncMetronome(eventTime);
+    this._pendingVisuals = [];
 
     this.state = 'playing';
     this.schedulerInterval = setInterval(() => this._scheduler(), SCHEDULE_INTERVAL_MS);
+    this._startVisualLoop();
   }
 
   pause() {
     if (this.state !== 'playing') return;
     this.state = 'paused';
-    if (this.schedulerInterval) {
-      clearInterval(this.schedulerInterval);
-      this.schedulerInterval = null;
-    }
+    this._clearScheduler();
+    this._stopVisualLoop();
+    this._pendingVisuals = [];
   }
 
   resume() {
@@ -117,26 +129,34 @@ export class TabPlayer {
     const eventTime = this.timeline[this.currentIndex]?.time || 0;
     this.startTime = ctx.currentTime - eventTime / this.tempoScale;
 
-    // Re-sync non-primary tracks
     for (let i = 0; i < this.tracks.length; i++) {
       if (i === this.primaryIndex) continue;
       this.tracks[i].currentIndex = this._findIndexAtTime(this.tracks[i].timeline, eventTime);
     }
 
     this._syncMetronome(eventTime);
+    this._pendingVisuals = [];
 
     this.state = 'playing';
     this.schedulerInterval = setInterval(() => this._scheduler(), SCHEDULE_INTERVAL_MS);
+    this._startVisualLoop();
   }
 
   stop() {
     this.state = 'stopped';
-    if (this.schedulerInterval) {
-      clearInterval(this.schedulerInterval);
-      this.schedulerInterval = null;
-    }
+    this._clearScheduler();
+    this._stopVisualLoop();
+    this._pendingVisuals = [];
     for (const t of this.tracks) t.currentIndex = 0;
     events.emit(TAB_STOP);
+  }
+
+  /**
+   * Clean up all intervals, rAF, and state.
+   */
+  destroy() {
+    this.stop();
+    this.tracks = [];
   }
 
   setTempoScale(scale) {
@@ -172,6 +192,15 @@ export class TabPlayer {
     this._syncMetronome(eventTime);
   }
 
+  // --- Internal helpers ---
+
+  _clearScheduler() {
+    if (this.schedulerInterval) {
+      clearInterval(this.schedulerInterval);
+      this.schedulerInterval = null;
+    }
+  }
+
   _syncMetronome(time) {
     if (!this.measures) return;
     for (let i = 0; i < this.measures.length; i++) {
@@ -180,9 +209,7 @@ export class TabPlayer {
         this.nextMetronomeMeasureIndex = i;
         const beatDuration = 60 / m.tempo;
         this.nextMetronomeBeatInMeasure = Math.floor((time - m.startTime) / beatDuration);
-        
-        // If we are exactly at a beat time, start scheduling from this beat.
-        // If we are between beats, start from the NEXT beat.
+
         const elapsedInBeat = (time - m.startTime) % beatDuration;
         if (elapsedInBeat > 0.001) {
           this.nextMetronomeBeatInMeasure++;
@@ -198,12 +225,24 @@ export class TabPlayer {
     this.nextMetronomeBeatInMeasure = 0;
   }
 
+  /**
+   * Binary search for the first timeline index at or after the given time.
+   * O(log n) instead of O(n).
+   */
   _findIndexAtTime(timeline, time) {
     if (!timeline || timeline.length === 0) return 0;
-    for (let i = 0; i < timeline.length; i++) {
-      if (timeline[i].time >= time - 0.001) return i;
+    const target = time - 0.001;
+    let lo = 0;
+    let hi = timeline.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (timeline[mid].time < target) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
     }
-    return timeline.length;
+    return lo < timeline.length ? lo : timeline.length;
   }
 
   _scheduleTrackAudio(track, scaledTime, event, gain) {
@@ -248,6 +287,55 @@ export class TabPlayer {
     };
   }
 
+  // --- rAF-based visual sync ---
+
+  _startVisualLoop() {
+    const tick = () => {
+      if (this.state !== 'playing') return;
+      this._flushVisuals();
+      this._rafId = requestAnimationFrame(tick);
+    };
+    this._rafId = requestAnimationFrame(tick);
+  }
+
+  _stopVisualLoop() {
+    if (this._rafId) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+  }
+
+  _flushVisuals() {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+
+    while (this._pendingVisuals.length > 0) {
+      const entry = this._pendingVisuals[0];
+      if (entry.scheduledTime > now) break;
+      this._pendingVisuals.shift();
+
+      // Emit beat-off for previous
+      if (entry.index > 0) {
+        events.emit(TAB_BEAT_OFF, { index: entry.index - 1 });
+      }
+
+      events.emit(TAB_BEAT_ON, {
+        index: entry.index,
+        notes: entry.notes,
+        measureNotes: entry.measureNotes,
+        masterBarIndex: entry.masterBarIndex,
+      });
+      events.emit(TAB_POSITION, {
+        currentIndex: entry.index,
+        totalBeats: entry.totalBeats,
+        masterBarIndex: entry.masterBarIndex,
+        totalBars: entry.totalBars,
+      });
+    }
+  }
+
+  // --- Main scheduler ---
+
   _scheduler() {
     if (this.state !== 'playing' || !this.timeline) return;
 
@@ -287,14 +375,10 @@ export class TabPlayer {
         this._scheduleTrackAudio(primary, scaledTime, event, PRIMARY_GAIN);
       }
 
-      // Visual sync
-      const delay = Math.max(0, (scaledTime - ctx.currentTime) * 1000);
+      // Queue visual update for rAF-based sync (O(1) measureMap lookup)
       const idx = primary.currentIndex;
-      const notesCopy = event.notes;
       const mbIndex = event.masterBarIndex;
-
-      // Collect measure notes for fretboard
-      const measure = primary.measures.find(m => m.masterBarIndex === mbIndex);
+      const measure = primary.measureMap.get(mbIndex);
       const measureNotes = [];
       if (measure) {
         for (const bi of measure.beatIndices) {
@@ -307,26 +391,15 @@ export class TabPlayer {
         }
       }
 
-      setTimeout(() => {
-        events.emit(TAB_BEAT_ON, {
-          index: idx,
-          notes: notesCopy,
-          measureNotes,
-          masterBarIndex: mbIndex,
-        });
-        events.emit(TAB_POSITION, {
-          currentIndex: idx,
-          totalBeats: primary.timeline.length,
-          masterBarIndex: mbIndex,
-          totalBars: primary.measures.length,
-        });
-      }, delay);
-
-      if (idx > 0) {
-        setTimeout(() => {
-          events.emit(TAB_BEAT_OFF, { index: idx - 1 });
-        }, delay);
-      }
+      this._pendingVisuals.push({
+        scheduledTime: scaledTime,
+        index: idx,
+        notes: event.notes,
+        measureNotes,
+        masterBarIndex: mbIndex,
+        totalBeats: primary.timeline.length,
+        totalBars: primary.measures.length,
+      });
 
       primary.currentIndex++;
 
@@ -351,7 +424,6 @@ export class TabPlayer {
       if (i === this.primaryIndex) continue;
       const track = this.tracks[i];
       if (track.muted) {
-        // Still advance the index to stay in sync, but don't play audio
         while (track.currentIndex < track.timeline.length) {
           const event = track.timeline[track.currentIndex];
           const scaledTime = this.startTime + event.time / this.tempoScale;

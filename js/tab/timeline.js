@@ -1,4 +1,5 @@
 // Flatten parsed GP score into a timed event array for a specific track
+// Supports repeat sections (repeatStart/repeatEnd/repeatCount)
 
 const NOTE_VALUE_BEATS = {
   'Whole': 4,
@@ -32,6 +33,60 @@ function rhythmToBeats(rhythm) {
 }
 
 /**
+ * Expand master bars to handle repeats.
+ * Returns a flat array of masterBar references in playback order.
+ */
+function expandRepeats(masterBars) {
+  const expanded = [];
+  let i = 0;
+
+  while (i < masterBars.length) {
+    const mb = masterBars[i];
+
+    if (mb.repeatEnd && mb.repeatCount > 0) {
+      // Find the matching repeatStart (scan backward from current position)
+      let repeatStartIdx = i;
+      for (let j = i; j >= 0; j--) {
+        if (masterBars[j].repeatStart) {
+          repeatStartIdx = j;
+          break;
+        }
+      }
+
+      // First pass is already played, so we need (repeatCount - 1) additional passes
+      // But we must add the current bar range for any passes not yet added
+      // Check if bars from repeatStartIdx..i are already in expanded from the first pass
+      const rangeAlreadyAdded = expanded.length > 0 &&
+        expanded[expanded.length - 1] === masterBars[i - 1 >= repeatStartIdx ? i - 1 : i];
+
+      if (!rangeAlreadyAdded) {
+        // Add the range for the first pass (repeatStartIdx..i inclusive)
+        for (let j = repeatStartIdx; j <= i; j++) {
+          expanded.push(masterBars[j]);
+        }
+      } else {
+        // First pass was already added bar-by-bar; just add the current end bar
+        expanded.push(masterBars[i]);
+      }
+
+      // Add (repeatCount - 1) additional repetitions
+      for (let rep = 1; rep < mb.repeatCount; rep++) {
+        for (let j = repeatStartIdx; j <= i; j++) {
+          expanded.push(masterBars[j]);
+        }
+      }
+
+      i++;
+    } else {
+      expanded.push(mb);
+      i++;
+    }
+  }
+
+  return expanded;
+}
+
+/**
  * Build a flat timeline of events for a track.
  * @param {object} score - parsed GP score
  * @param {number} trackIndex - index into score.tracks
@@ -46,7 +101,10 @@ export function buildTimeline(score, trackIndex) {
   const measures = [];
   let absoluteTime = 0;
 
-  for (const mb of score.masterBars) {
+  // Expand repeats to get playback-order master bars
+  const playbackBars = expandRepeats(score.masterBars);
+
+  for (const mb of playbackBars) {
     const barId = mb.barIds[trackIndex];
     if (barId === undefined) continue;
 
@@ -93,7 +151,7 @@ export function buildTimeline(score, trackIndex) {
               slide: note.slide,
               bended: note.bended,
               harmonic: note.harmonic,
-              pickStroke: note.pickStroke
+              pickStroke: beat.pickStroke || note.pickStroke,
             });
           }
         }

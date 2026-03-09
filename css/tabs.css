@@ -21,6 +21,22 @@
   margin-bottom: 0.75rem;
 }
 
+.tab-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.tab-mixer-toggle {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.tab-controls-row-transport {
+  margin-top: 0.5rem;
+}
+
 .tab-controls-row {
   display: flex;
   gap: 0.5rem;
@@ -135,9 +151,10 @@
 }
 
 .tab-canvas-wrap {
+  position: relative;
   overflow-x: hidden;
   overflow-y: auto;
-  max-height: 70vh; /* Show a good chunk of bars */
+  max-height: 70vh;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: var(--bg-surface) var(--bg-secondary);
@@ -159,6 +176,13 @@
 .tab-canvas {
   display: block;
   cursor: pointer;
+}
+
+.tab-canvas-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: auto;
 }
 
 @media (max-width: 768px) {
