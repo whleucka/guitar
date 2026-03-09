@@ -171,7 +171,7 @@ export function renderTabViewer(container) {
 
     const backing = allTrackData
       .filter(t => t.trackIndex !== selectedTrackIndex)
-      .map(t => ({ timeline: t.timeline, measures: t.measures }));
+      .map(t => ({ timeline: t.timeline, measures: t.measures, isDrum: t.isDrum }));
 
     player.setTracks(
       { timeline: primary.timeline, measures: primary.measures },

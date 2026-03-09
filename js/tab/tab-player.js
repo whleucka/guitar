@@ -2,6 +2,7 @@
 
 import { getAudioContext } from '../audio/audio-engine.js';
 import { playNote } from '../audio/synth-voice.js';
+import { playDrum } from '../audio/drum-voice.js';
 import { midiToFrequency } from '../music/notes.js';
 import { events, TAB_BEAT_ON, TAB_BEAT_OFF, TAB_POSITION, TAB_STOP } from '../events.js';
 
@@ -33,7 +34,7 @@ export class TabPlayer {
   /**
    * Set all track data. Primary track drives visuals; others are backing audio.
    * @param {object} primaryTrack - { timeline, measures }
-   * @param {Array} backingTracks - [{ timeline, measures }, ...]
+   * @param {Array} backingTracks - [{ timeline, measures, isDrum }, ...]
    */
   setTracks(primaryTrack, backingTracks = []) {
     this.timeline = primaryTrack.timeline;
@@ -41,6 +42,7 @@ export class TabPlayer {
     this.backingTracks = backingTracks.map(t => ({
       timeline: t.timeline,
       measures: t.measures,
+      isDrum: !!t.isDrum,
       currentIndex: 0,
     }));
     this.currentIndex = 0;
@@ -241,12 +243,21 @@ export class TabPlayer {
 
           if (scaledTime > ctx.currentTime + lookahead) break;
 
-          for (const note of event.notes) {
-            if (note.tieDestination) continue;
-            const freq = note.midi > 0
-              ? midiToFrequency(note.midi)
-              : midiToFrequency(40 + note.fret);
-            playNote(freq, Math.max(0, Math.min(5, note.string)), scaledTime, BACKING_GAIN);
+          if (bt.isDrum) {
+            // Drum tracks: use drum synth with GM note number (stored as fret)
+            for (const note of event.notes) {
+              if (note.tieDestination) continue;
+              playDrum(note.fret, scaledTime, BACKING_GAIN);
+            }
+          } else {
+            // Pitched tracks: use Karplus-Strong string synth
+            for (const note of event.notes) {
+              if (note.tieDestination) continue;
+              const freq = note.midi > 0
+                ? midiToFrequency(note.midi)
+                : midiToFrequency(40 + note.fret);
+              playNote(freq, Math.max(0, Math.min(5, note.string)), scaledTime, BACKING_GAIN);
+            }
           }
 
           bt.currentIndex++;
