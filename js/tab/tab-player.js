@@ -14,38 +14,61 @@ const BACKING_GAIN = 0.35;
 
 export class TabPlayer {
   constructor() {
-    // Primary track (selected in UI) — drives visuals + fretboard
-    this.timeline = null;
-    this.measures = null;
-    this.currentIndex = 0;
-
-    // Backing tracks — audio only
-    this.backingTracks = []; // [{ timeline, measures, currentIndex }]
+    // All tracks: [{ timeline, measures, isDrum, muted, currentIndex }]
+    this.tracks = [];
+    this.primaryIndex = 0; // index into this.tracks — drives visuals
 
     this.startTime = 0;
     this.tempoScale = 1.0;
     this.loopA = null;
     this.loopB = null;
-    this.soloTrack = false; // when true, only primary track plays audio
     this.state = 'stopped'; // stopped | playing | paused
     this.schedulerInterval = null;
   }
 
+  /** Primary track shortcut */
+  get timeline() { return this.tracks[this.primaryIndex]?.timeline || null; }
+  get measures() { return this.tracks[this.primaryIndex]?.measures || null; }
+  get currentIndex() { return this.tracks[this.primaryIndex]?.currentIndex || 0; }
+  set currentIndex(v) { if (this.tracks[this.primaryIndex]) this.tracks[this.primaryIndex].currentIndex = v; }
+
   /**
-   * Set all track data. Primary track drives visuals; others are backing audio.
-   * @param {object} primaryTrack - { timeline, measures }
-   * @param {Array} backingTracks - [{ timeline, measures, isDrum }, ...]
+   * Set all track data.
+   * @param {Array} tracks - [{ timeline, measures, isDrum }, ...]
+   * @param {number} primaryIndex - which track drives visuals
    */
-  setTracks(primaryTrack, backingTracks = []) {
-    this.timeline = primaryTrack.timeline;
-    this.measures = primaryTrack.measures;
-    this.backingTracks = backingTracks.map(t => ({
+  setTracks(tracks, primaryIndex = 0) {
+    this.tracks = tracks.map(t => ({
       timeline: t.timeline,
       measures: t.measures,
       isDrum: !!t.isDrum,
+      muted: false,
       currentIndex: 0,
     }));
-    this.currentIndex = 0;
+    this.primaryIndex = primaryIndex;
+  }
+
+  /**
+   * Change which track is primary (visual). Does not change mute states.
+   */
+  setPrimary(index) {
+    if (index < 0 || index >= this.tracks.length) return;
+    // Sync the new primary to the old primary's time position
+    if (this.state === 'playing' || this.state === 'paused') {
+      const oldPrimary = this.tracks[this.primaryIndex];
+      const time = oldPrimary?.timeline[oldPrimary.currentIndex]?.time || 0;
+      this.primaryIndex = index;
+      this.currentIndex = this._findIndexAtTime(this.timeline, time);
+    } else {
+      this.primaryIndex = index;
+      this.currentIndex = 0;
+    }
+  }
+
+  setTrackMuted(trackIdx, muted) {
+    if (this.tracks[trackIdx]) {
+      this.tracks[trackIdx].muted = muted;
+    }
   }
 
   play(fromIndex = 0) {
@@ -57,9 +80,10 @@ export class TabPlayer {
     const eventTime = this.timeline[fromIndex] ? this.timeline[fromIndex].time : 0;
     this.startTime = ctx.currentTime - eventTime / this.tempoScale;
 
-    // Sync backing tracks to the same absolute time
-    for (const bt of this.backingTracks) {
-      bt.currentIndex = this._findIndexAtTime(bt.timeline, eventTime);
+    // Sync all tracks to the same absolute time
+    for (let i = 0; i < this.tracks.length; i++) {
+      if (i === this.primaryIndex) continue;
+      this.tracks[i].currentIndex = this._findIndexAtTime(this.tracks[i].timeline, eventTime);
     }
 
     this.state = 'playing';
@@ -78,14 +102,13 @@ export class TabPlayer {
   resume() {
     if (this.state !== 'paused' || !this.timeline) return;
     const ctx = getAudioContext();
-    const eventTime = this.timeline[this.currentIndex]
-      ? this.timeline[this.currentIndex].time
-      : 0;
+    const eventTime = this.timeline[this.currentIndex]?.time || 0;
     this.startTime = ctx.currentTime - eventTime / this.tempoScale;
 
-    // Re-sync backing tracks
-    for (const bt of this.backingTracks) {
-      bt.currentIndex = this._findIndexAtTime(bt.timeline, eventTime);
+    // Re-sync non-primary tracks
+    for (let i = 0; i < this.tracks.length; i++) {
+      if (i === this.primaryIndex) continue;
+      this.tracks[i].currentIndex = this._findIndexAtTime(this.tracks[i].timeline, eventTime);
     }
 
     this.state = 'playing';
@@ -98,28 +121,19 @@ export class TabPlayer {
       clearInterval(this.schedulerInterval);
       this.schedulerInterval = null;
     }
-    this.currentIndex = 0;
-    for (const bt of this.backingTracks) {
-      bt.currentIndex = 0;
-    }
+    for (const t of this.tracks) t.currentIndex = 0;
     events.emit(TAB_STOP);
   }
 
   setTempoScale(scale) {
     if (this.state === 'playing' && this.timeline) {
       const ctx = getAudioContext();
-      const eventTime = this.timeline[this.currentIndex]
-        ? this.timeline[this.currentIndex].time
-        : 0;
+      const eventTime = this.timeline[this.currentIndex]?.time || 0;
       this.tempoScale = scale;
       this.startTime = ctx.currentTime - eventTime / this.tempoScale;
     } else {
       this.tempoScale = scale;
     }
-  }
-
-  setSoloTrack(solo) {
-    this.soloTrack = solo;
   }
 
   setLoop(a, b) {
@@ -128,22 +142,20 @@ export class TabPlayer {
   }
 
   seekTo(index) {
-    this.currentIndex = Math.max(0, Math.min(index, (this.timeline?.length || 1) - 1));
-    if (this.state === 'playing' && this.timeline) {
+    if (!this.timeline) return;
+    this.currentIndex = Math.max(0, Math.min(index, this.timeline.length - 1));
+    if (this.state === 'playing') {
       const ctx = getAudioContext();
       const eventTime = this.timeline[this.currentIndex].time;
       this.startTime = ctx.currentTime - eventTime / this.tempoScale;
 
-      // Re-sync backing tracks
-      for (const bt of this.backingTracks) {
-        bt.currentIndex = this._findIndexAtTime(bt.timeline, eventTime);
+      for (let i = 0; i < this.tracks.length; i++) {
+        if (i === this.primaryIndex) continue;
+        this.tracks[i].currentIndex = this._findIndexAtTime(this.tracks[i].timeline, eventTime);
       }
     }
   }
 
-  /**
-   * Find the timeline index closest to (but not before) a given absolute time.
-   */
   _findIndexAtTime(timeline, time) {
     if (!timeline || timeline.length === 0) return 0;
     for (let i = 0; i < timeline.length; i++) {
@@ -152,35 +164,55 @@ export class TabPlayer {
     return timeline.length;
   }
 
-  _scheduler() {
-    if (this.state !== 'playing' || !this.timeline) return;
-
-    const ctx = getAudioContext();
-    const lookahead = LOOKAHEAD_MS / 1000;
-
-    // --- Schedule primary track (audio + visuals) ---
-    while (this.currentIndex < this.timeline.length) {
-      const event = this.timeline[this.currentIndex];
-      const scaledTime = this.startTime + event.time / this.tempoScale;
-
-      if (scaledTime > ctx.currentTime + lookahead) break;
-
-      // Schedule audio for primary track
+  _scheduleTrackAudio(track, scaledTime, event, gain) {
+    const noteDur = event.duration / this.tempoScale;
+    if (track.isDrum) {
+      for (const note of event.notes) {
+        if (note.tieDestination) continue;
+        playDrum(note.fret, scaledTime, gain);
+      }
+    } else {
       for (const note of event.notes) {
         if (note.tieDestination) continue;
         const freq = note.midi > 0
           ? midiToFrequency(note.midi)
           : midiToFrequency(40 + note.fret);
-        playNote(freq, Math.max(0, Math.min(5, note.string)), scaledTime, PRIMARY_GAIN);
+        playNote(freq, Math.max(0, Math.min(5, note.string)), scaledTime, gain, noteDur);
+      }
+    }
+  }
+
+  _scheduler() {
+    if (this.state !== 'playing' || !this.timeline) return;
+
+    const ctx = getAudioContext();
+    const lookahead = LOOKAHEAD_MS / 1000;
+    const primary = this.tracks[this.primaryIndex];
+
+    // --- Schedule primary track (audio + visuals) ---
+    while (primary.currentIndex < primary.timeline.length) {
+      const event = primary.timeline[primary.currentIndex];
+      const scaledTime = this.startTime + event.time / this.tempoScale;
+
+      if (scaledTime > ctx.currentTime + lookahead) break;
+
+      // Audio (if not muted)
+      if (!primary.muted) {
+        this._scheduleTrackAudio(primary, scaledTime, event, PRIMARY_GAIN);
       }
 
-      // Collect all notes in the current measure for fretboard preview
+      // Visual sync
+      const delay = Math.max(0, (scaledTime - ctx.currentTime) * 1000);
+      const idx = primary.currentIndex;
+      const notesCopy = event.notes;
       const mbIndex = event.masterBarIndex;
-      const measure = this.measures.find(m => m.masterBarIndex === mbIndex);
+
+      // Collect measure notes for fretboard
+      const measure = primary.measures.find(m => m.masterBarIndex === mbIndex);
       const measureNotes = [];
       if (measure) {
         for (const bi of measure.beatIndices) {
-          const b = this.timeline[bi];
+          const b = primary.timeline[bi];
           if (b) {
             for (const n of b.notes) {
               if (!n.tieDestination) measureNotes.push(n);
@@ -189,11 +221,6 @@ export class TabPlayer {
         }
       }
 
-      // Visual sync (fire near the beat time)
-      const delay = Math.max(0, (scaledTime - ctx.currentTime) * 1000);
-      const idx = this.currentIndex;
-      const notesCopy = event.notes;
-
       setTimeout(() => {
         events.emit(TAB_BEAT_ON, {
           index: idx,
@@ -201,72 +228,65 @@ export class TabPlayer {
           measureNotes,
           masterBarIndex: mbIndex,
         });
-
         events.emit(TAB_POSITION, {
           currentIndex: idx,
-          totalBeats: this.timeline ? this.timeline.length : 0,
+          totalBeats: primary.timeline.length,
           masterBarIndex: mbIndex,
-          totalBars: this.measures ? this.measures.length : 0,
+          totalBars: primary.measures.length,
         });
       }, delay);
 
-      // Clear previous beat highlight
       if (idx > 0) {
         setTimeout(() => {
           events.emit(TAB_BEAT_OFF, { index: idx - 1 });
         }, delay);
       }
 
-      this.currentIndex++;
+      primary.currentIndex++;
 
-      // Loop handling (primary drives the loop)
-      if (this.loopB !== null && this.currentIndex > this.loopB) {
+      // Loop handling
+      if (this.loopB !== null && primary.currentIndex > this.loopB) {
         const loopStart = this.loopA !== null ? this.loopA : 0;
-        this.currentIndex = loopStart;
-        const restartTime = this.timeline[loopStart].time;
+        primary.currentIndex = loopStart;
+        const restartTime = primary.timeline[loopStart].time;
         this.startTime = ctx.currentTime - restartTime / this.tempoScale + 0.05;
 
-        // Re-sync backing tracks to loop start
-        for (const bt of this.backingTracks) {
-          bt.currentIndex = this._findIndexAtTime(bt.timeline, restartTime);
+        for (let i = 0; i < this.tracks.length; i++) {
+          if (i === this.primaryIndex) continue;
+          this.tracks[i].currentIndex = this._findIndexAtTime(this.tracks[i].timeline, restartTime);
         }
         break;
       }
     }
 
-    // --- Schedule backing tracks (audio only, no visuals) ---
-    if (!this.soloTrack) {
-      for (const bt of this.backingTracks) {
-        while (bt.currentIndex < bt.timeline.length) {
-          const event = bt.timeline[bt.currentIndex];
+    // --- Schedule non-primary tracks (audio only) ---
+    for (let i = 0; i < this.tracks.length; i++) {
+      if (i === this.primaryIndex) continue;
+      const track = this.tracks[i];
+      if (track.muted) {
+        // Still advance the index to stay in sync, but don't play audio
+        while (track.currentIndex < track.timeline.length) {
+          const event = track.timeline[track.currentIndex];
           const scaledTime = this.startTime + event.time / this.tempoScale;
-
           if (scaledTime > ctx.currentTime + lookahead) break;
-
-          if (bt.isDrum) {
-            // Drum tracks: use drum synth with GM note number (stored as fret)
-            for (const note of event.notes) {
-              if (note.tieDestination) continue;
-              playDrum(note.fret, scaledTime, BACKING_GAIN);
-            }
-          } else {
-            // Pitched tracks: use Karplus-Strong string synth
-            for (const note of event.notes) {
-              if (note.tieDestination) continue;
-              const freq = note.midi > 0
-                ? midiToFrequency(note.midi)
-                : midiToFrequency(40 + note.fret);
-              playNote(freq, Math.max(0, Math.min(5, note.string)), scaledTime, BACKING_GAIN);
-            }
-          }
-
-          bt.currentIndex++;
+          track.currentIndex++;
         }
+        continue;
+      }
+
+      while (track.currentIndex < track.timeline.length) {
+        const event = track.timeline[track.currentIndex];
+        const scaledTime = this.startTime + event.time / this.tempoScale;
+
+        if (scaledTime > ctx.currentTime + lookahead) break;
+
+        this._scheduleTrackAudio(track, scaledTime, event, BACKING_GAIN);
+        track.currentIndex++;
       }
     }
 
     // End of primary timeline
-    if (this.currentIndex >= this.timeline.length) {
+    if (primary.currentIndex >= primary.timeline.length) {
       this.stop();
     }
   }

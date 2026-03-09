@@ -108,10 +108,12 @@ export function buildTimeline(score, trackIndex) {
       }
     }
 
-    // If voice was empty, advance by measure duration
-    if (measureBeats.length === 0) {
-      const measureDuration = (mb.timeSignature.num / (mb.timeSignature.den / 4)) * beatDuration;
-      absoluteTime += measureDuration;
+    // Ensure measure fills its full theoretical duration based on time signature.
+    // Beats may not sum to a full measure (trailing rests are implicit in GP).
+    const measureDuration = (mb.timeSignature.num / (mb.timeSignature.den / 4)) * beatDuration;
+    const measureEnd = measureStart + measureDuration;
+    if (absoluteTime < measureEnd) {
+      absoluteTime = measureEnd;
     }
 
     measures.push({

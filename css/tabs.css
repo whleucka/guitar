@@ -54,6 +54,52 @@
   gap: 0.3rem;
 }
 
+/* Track mixer */
+.tab-mixer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.tab-mixer:empty {
+  display: none;
+}
+
+.tab-mixer-track {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: default;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tab-mixer-track.selected {
+  background: var(--bg-surface);
+  color: var(--accent-gold);
+}
+
+.tab-mixer-track input[type="checkbox"] {
+  accent-color: var(--accent-blue);
+  margin: 0;
+  cursor: pointer;
+}
+
+.tab-mixer-name {
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tab-mixer-track.selected .tab-mixer-name {
+  font-weight: 600;
+}
+
 /* Canvas container */
 .tab-canvas-container {
   background: var(--bg-secondary);
