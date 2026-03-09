@@ -1,4 +1,4 @@
-// Tab viewer controls: file picker, track selector, transport, tempo, loop
+// Tab viewer controls: file picker, track selector, transport, tempo, loop, solo
 
 import { parseGPFile } from '../tab/gp-parser.js';
 import { buildTimeline } from '../tab/timeline.js';
@@ -35,6 +35,13 @@ export function renderTabViewer(container) {
   trackSelect.className = 'scale-select';
   trackSelect.innerHTML = '<option value="">Track</option>';
   trackSelect.disabled = true;
+
+  // Solo toggle
+  const soloBtn = document.createElement('button');
+  soloBtn.className = 'toggle-btn';
+  soloBtn.textContent = 'Solo';
+  soloBtn.title = 'Solo selected track (mute others)';
+  soloBtn.disabled = true;
 
   // Transport
   const playBtn = document.createElement('button');
@@ -106,6 +113,7 @@ export function renderTabViewer(container) {
   row.appendChild(fileBtn);
   row.appendChild(fileInput);
   row.appendChild(trackSelect);
+  row.appendChild(soloBtn);
   row.appendChild(playBtn);
   row.appendChild(stopBtn);
   row.appendChild(tempoWrap);
@@ -132,11 +140,65 @@ export function renderTabViewer(container) {
   const renderer = new TabRenderer(canvasContainer);
   const player = new TabPlayer();
   let score = null;
-  let currentTimeline = null;
-  let currentMeasures = null;
+  let allTrackData = []; // [{ trackIndex, timeline, measures }] for all non-drum tracks
+  let selectedTrackIndex = null;
   let loopA = null;
   let loopB = null;
   let settingLoop = null; // 'a' or 'b' or null
+  let isSolo = false;
+
+  /**
+   * Build timelines for all non-drum tracks and configure the player.
+   */
+  function buildAllTracks() {
+    if (!score) return;
+    allTrackData = [];
+    score.tracks.forEach((t, i) => {
+      if (t.isDrum) return;
+      const { timeline, measures } = buildTimeline(score, i);
+      allTrackData.push({ trackIndex: i, timeline, measures });
+    });
+  }
+
+  /**
+   * Configure the player with the selected primary track and all others as backing.
+   */
+  function configurePlayer() {
+    if (!score || selectedTrackIndex === null) return;
+
+    const primary = allTrackData.find(t => t.trackIndex === selectedTrackIndex);
+    if (!primary) return;
+
+    const backing = allTrackData
+      .filter(t => t.trackIndex !== selectedTrackIndex)
+      .map(t => ({ timeline: t.timeline, measures: t.measures }));
+
+    player.setTracks(
+      { timeline: primary.timeline, measures: primary.measures },
+      backing,
+    );
+    player.setSoloTrack(isSolo);
+  }
+
+  /**
+   * Select a track for visual display and set it as the primary player track.
+   */
+  function selectTrack(trackIndex) {
+    if (!score) return;
+    selectedTrackIndex = trackIndex;
+
+    const trackData = allTrackData.find(t => t.trackIndex === trackIndex);
+    if (!trackData) return;
+
+    const track = score.tracks[trackIndex];
+    renderer.setData(trackData.timeline, trackData.measures, track.stringCount);
+    posDisplay.textContent = `Bar 1 / ${trackData.measures.length}`;
+    loopA = null;
+    loopB = null;
+    settingLoop = null;
+
+    configurePlayer();
+  }
 
   // --- File loading ---
   fileInput.addEventListener('change', async (e) => {
@@ -149,6 +211,9 @@ export function renderTabViewer(container) {
       score = await parseGPFile(buf);
 
       songInfo.textContent = `${score.title} — ${score.artist}`;
+
+      // Build timelines for all tracks
+      buildAllTracks();
 
       // Populate track selector (filter out drums)
       trackSelect.innerHTML = '';
@@ -163,6 +228,7 @@ export function renderTabViewer(container) {
       trackSelect.disabled = false;
       playBtn.disabled = false;
       stopBtn.disabled = false;
+      soloBtn.disabled = false;
       loopABtn.disabled = false;
       loopBBtn.disabled = false;
       loopClearBtn.disabled = false;
@@ -170,7 +236,7 @@ export function renderTabViewer(container) {
       // Auto-select first non-drum track
       if (trackSelect.options.length > 0) {
         trackSelect.selectedIndex = 0;
-        loadTrack(parseInt(trackSelect.value));
+        selectTrack(parseInt(trackSelect.value));
       }
 
       fileBtn.textContent = 'Open GP File';
@@ -187,28 +253,21 @@ export function renderTabViewer(container) {
     const idx = parseInt(trackSelect.value);
     if (!isNaN(idx)) {
       player.stop();
-      loadTrack(idx);
+      selectTrack(idx);
     }
   });
 
-  function loadTrack(trackIndex) {
-    if (!score) return;
-    const { timeline, measures } = buildTimeline(score, trackIndex);
-    currentTimeline = timeline;
-    currentMeasures = measures;
-
-    const track = score.tracks[trackIndex];
-    renderer.setData(timeline, measures, track.stringCount);
-
-    posDisplay.textContent = `Bar 1 / ${measures.length}`;
-    loopA = null;
-    loopB = null;
-    settingLoop = null;
-  }
+  // --- Solo toggle ---
+  soloBtn.addEventListener('click', () => {
+    isSolo = !isSolo;
+    soloBtn.classList.toggle('active', isSolo);
+    player.setSoloTrack(isSolo);
+  });
 
   // --- Transport ---
   playBtn.addEventListener('click', () => {
-    if (!currentTimeline || currentTimeline.length === 0) return;
+    const trackData = allTrackData.find(t => t.trackIndex === selectedTrackIndex);
+    if (!trackData || trackData.timeline.length === 0) return;
 
     if (player.state === 'playing') {
       player.pause();
@@ -217,7 +276,7 @@ export function renderTabViewer(container) {
       player.resume();
       playBtn.textContent = '⏸ Pause';
     } else {
-      player.play(currentTimeline, currentMeasures, 0);
+      player.play(0);
       playBtn.textContent = '⏸ Pause';
     }
   });
@@ -226,8 +285,9 @@ export function renderTabViewer(container) {
     player.stop();
     playBtn.textContent = '▶ Play';
     renderer.clearCursor();
-    posDisplay.textContent = currentMeasures
-      ? `Bar 1 / ${currentMeasures.length}`
+    const trackData = allTrackData.find(t => t.trackIndex === selectedTrackIndex);
+    posDisplay.textContent = trackData
+      ? `Bar 1 / ${trackData.measures.length}`
       : '';
   });
 
