@@ -80,8 +80,8 @@ export function buildTimeline(score, trackIndex) {
               const note = score.notes.get(noteId);
               if (!note) continue;
 
-              // Invert string: GPIF string 0 = highest pitch
-              const appString = stringCount - 1 - note.string;
+              // GPIF string index matches app convention: 0 = low E, 5 = high e
+              const appString = note.string;
 
               beatNotes.push({
                 fret: note.fret,
