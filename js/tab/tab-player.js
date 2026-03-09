@@ -30,7 +30,7 @@ export class TabPlayer {
     const ctx = getAudioContext();
     // Calculate start time offset so that currentIndex plays "now"
     const eventTime = timeline[fromIndex] ? timeline[fromIndex].time : 0;
-    this.startTime = ctx.currentTime - eventTime * this.tempoScale;
+    this.startTime = ctx.currentTime - eventTime / this.tempoScale;
     this.scheduledUpTo = ctx.currentTime;
 
     this.state = 'playing';
@@ -52,7 +52,7 @@ export class TabPlayer {
     const eventTime = this.timeline[this.currentIndex]
       ? this.timeline[this.currentIndex].time
       : 0;
-    this.startTime = ctx.currentTime - eventTime * this.tempoScale;
+    this.startTime = ctx.currentTime - eventTime / this.tempoScale;
     this.scheduledUpTo = ctx.currentTime;
     this.state = 'playing';
     this.schedulerInterval = setInterval(() => this._scheduler(), SCHEDULE_INTERVAL_MS);
@@ -75,7 +75,7 @@ export class TabPlayer {
         ? this.timeline[this.currentIndex].time
         : 0;
       this.tempoScale = scale;
-      this.startTime = ctx.currentTime - eventTime * this.tempoScale;
+      this.startTime = ctx.currentTime - eventTime / this.tempoScale;
     } else {
       this.tempoScale = scale;
     }
@@ -91,7 +91,7 @@ export class TabPlayer {
     if (this.state === 'playing' && this.timeline) {
       const ctx = getAudioContext();
       const eventTime = this.timeline[this.currentIndex].time;
-      this.startTime = ctx.currentTime - eventTime * this.tempoScale;
+      this.startTime = ctx.currentTime - eventTime / this.tempoScale;
       this.scheduledUpTo = ctx.currentTime;
     }
   }
@@ -104,7 +104,7 @@ export class TabPlayer {
 
     while (this.currentIndex < this.timeline.length) {
       const event = this.timeline[this.currentIndex];
-      const scaledTime = this.startTime + event.time * this.tempoScale;
+      const scaledTime = this.startTime + event.time / this.tempoScale;
 
       if (scaledTime > ctx.currentTime + lookahead) break;
 
@@ -167,7 +167,7 @@ export class TabPlayer {
         const loopStart = this.loopA !== null ? this.loopA : 0;
         this.currentIndex = loopStart;
         const restartTime = this.timeline[loopStart].time;
-        this.startTime = ctx.currentTime - restartTime * this.tempoScale + 0.05;
+        this.startTime = ctx.currentTime - restartTime / this.tempoScale + 0.05;
         break;
       }
     }
