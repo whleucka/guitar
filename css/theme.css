@@ -38,7 +38,8 @@
   --transition: 0.15s ease;
 
   /* Font */
-  --font-main: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-main: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-title: 'Righteous', sans-serif;
   --font-mono: 'Fira Code', 'Consolas', monospace;
 }
 

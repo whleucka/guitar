@@ -23,11 +23,12 @@
 }
 
 .toolbar-title {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-family: var(--font-title);
+  font-size: 1.75rem;
   color: var(--accent-gold);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.05em;
   white-space: nowrap;
+  text-shadow: 0 0 10px rgba(224, 175, 104, 0.2);
 }
 
 .toolbar-nav {
