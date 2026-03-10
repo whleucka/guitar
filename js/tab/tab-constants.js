@@ -21,6 +21,8 @@ export const TAB_CONSTANTS = {
   tabLabelOffsetTop: -6,
   tabLabelOffsetMid: 3,
   tabLabelOffsetBot: 12,
+  tuningX: 42,
+  tuningFontSize: 9,
   sectionLabelOffsetY: -40,
   measureNumOffsetX: 4,
   measureNumOffsetY: -12,

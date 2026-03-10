@@ -351,6 +351,7 @@ export function renderTabViewer(container) {
       measures: td.measures,
       stringCount: track.stringCount,
       name: track.name,
+      tuning: td.tuning,
     });
   }
 }

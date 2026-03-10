@@ -2,6 +2,7 @@
 // All methods receive the canvas context and layout data; no state ownership.
 
 import { TAB_CONSTANTS } from './tab-constants.js';
+import { midiToNoteName } from '../music/notes.js';
 
 const C = TAB_CONSTANTS;
 
@@ -38,6 +39,26 @@ export function drawTabLabel(ctx, c, staffY, staffHeight) {
   ctx.fillText('T', C.tabLabelX, midY + C.tabLabelOffsetTop);
   ctx.fillText('A', C.tabLabelX, midY + C.tabLabelOffsetMid);
   ctx.fillText('B', C.tabLabelX, midY + C.tabLabelOffsetBot);
+}
+
+// --- Tuning display ---
+
+export function drawTuning(ctx, c, staffY, stringCount, tuning) {
+  if (!tuning || tuning.length !== stringCount) return;
+  
+  ctx.fillStyle = c.muted;
+  ctx.font = `${C.tuningFontSize}px ${c.fontMono}`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  
+  // Draw note names from high to low (top to bottom on staff)
+  for (let s = 0; s < stringCount; s++) {
+    const stringIndex = stringCount - 1 - s; // Reverse: top staff line = highest string
+    const midi = tuning[stringIndex];
+    const noteName = midiToNoteName(midi);
+    const y = staffY + s * C.lineSpacing;
+    ctx.fillText(noteName, C.tuningX, y);
+  }
 }
 
 // --- Time signatures ---
@@ -623,7 +644,7 @@ function _drawDot(ctx, c, x, y) {
  * @param {number} totalHeight
  */
 export function renderStaticContent(ctx, c, track, systems, beatPositions, totalWidth, totalHeight) {
-  const { stringCount, timeline, name } = track;
+  const { stringCount, timeline, name, tuning } = track;
   const staffHeight = (stringCount - 1) * C.lineSpacing;
 
   // Clear
@@ -639,6 +660,12 @@ export function renderStaticContent(ctx, c, track, systems, beatPositions, total
 
     drawStaffLines(ctx, c, staffY, stringCount, totalWidth);
     drawTabLabel(ctx, c, staffY, staffHeight);
+    
+    // Draw tuning only on first system (like Songsterr)
+    if (sIdx === 0) {
+      drawTuning(ctx, c, staffY, stringCount, tuning);
+    }
+    
     drawTimeSignatures(ctx, c, system, staffY, staffHeight);
     drawMeasureBars(ctx, c, system, staffY, staffHeight);
     drawSystemEndBarline(ctx, c, staffY, staffHeight, totalWidth);
