@@ -67,15 +67,6 @@ export function renderTabViewer(container) {
     disabled: true,
   });
 
-  const barsSelect = buildSelect({
-    options: [3, 4, 5, 6].map(n => ({
-      value: n,
-      label: `${n} Bars/Line`,
-      selected: n === 4,
-    })),
-  });
-  barsSelect.title = 'Measures per line';
-
   const voiceSelect = buildSelect({
     options: [
       { value: VOICE_TYPES.KARPLUS, label: 'Default Synth' },
@@ -90,7 +81,6 @@ export function renderTabViewer(container) {
   row1.appendChild(fileLoader.fileBtn);
   row1.appendChild(fileLoader.fileInput);
   row1.appendChild(trackSelect);
-  row1.appendChild(barsSelect);
   row1.appendChild(voiceSelect);
   header.appendChild(row1);
 
@@ -134,11 +124,6 @@ export function renderTabViewer(container) {
   container.appendChild(group);
 
   // --- Event wiring ---
-
-  barsSelect.addEventListener('change', () => {
-    const n = parseInt(barsSelect.value);
-    if (!isNaN(n)) renderer.setMeasuresPerLine(n);
-  });
 
   // GM program numbers for voice types (General MIDI)
   const VOICE_GM_PROGRAMS = {

@@ -174,7 +174,13 @@ export function drawNotes(ctx, c, system, staffY, stringCount, staffHeight, time
         if (note.string < 0 || note.string >= stringCount) continue;
         _drawNote(ctx, c, note, x, staffY, stringCount, beatIdx, event, measure, timeline, beatPositions);
       }
+
+      // Draw a single tie arc above the staff for chord ties (instead of per-note arcs)
+      _drawChordTie(ctx, c, event, x, staffY, beatIdx, measure, timeline, beatPositions);
     }
+
+    // Draw tuplet brackets for this measure
+    _drawTupletBrackets(ctx, c, measure, staffY, timeline, beatPositions);
   }
 }
 
@@ -249,8 +255,8 @@ function _drawNote(ctx, c, note, x, staffY, stringCount, beatIdx, event, measure
     }
   }
 
-  // Slide / hammer-on / tie lines
-  if (note.slide || note.hopoOrigin || note.tieOrigin) {
+  // Slide / hammer-on lines (ties handled by _drawChordTie, tuplets by _drawTupletBrackets)
+  if ((note.slide || note.hopoOrigin) && !event.tupletNum) {
     _drawConnector(ctx, c, note, x, y, staffY, stringCount, beatIdx, event, measure, timeline, beatPositions);
   }
 }
@@ -275,6 +281,131 @@ function _drawBend(ctx, c, note, x, y) {
   ctx.fillStyle = c.text;
   ctx.font = `${C.bendFontSize}px sans-serif`;
   ctx.fillText('Full', bx + 5, by - C.bendHeight - 6);
+}
+
+/**
+ * Draw tuplet brackets (e.g. "3" for triplets) above grouped beats.
+ * Groups consecutive beats with the same tupletNum into one bracket.
+ */
+function _drawTupletBrackets(ctx, c, measure, staffY, timeline, beatPositions) {
+  const indices = measure.beatIndices;
+  let i = 0;
+
+  while (i < indices.length) {
+    const event = timeline[indices[i]];
+    if (!event || !event.tupletNum || event.tupletNum <= 0) {
+      i++;
+      continue;
+    }
+
+    // Collect consecutive beats with the same tupletNum
+    const tupletNum = event.tupletNum;
+    const groupStart = i;
+    while (i < indices.length) {
+      const ev = timeline[indices[i]];
+      if (!ev || ev.tupletNum !== tupletNum) break;
+      i++;
+    }
+    const groupEnd = i - 1;
+
+    // Need at least 2 beats for a bracket
+    if (groupEnd <= groupStart) continue;
+
+    const startPos = beatPositions[indices[groupStart]];
+    const endPos = beatPositions[indices[groupEnd]];
+    if (!startPos || !endPos) continue;
+
+    const bracketY = staffY - 14;
+    const tickH = 4;
+    const x1 = startPos.x;
+    const x2 = endPos.x;
+    const midX = (x1 + x2) / 2;
+
+    ctx.strokeStyle = c.muted;
+    ctx.lineWidth = 1;
+
+    // Left tick
+    ctx.beginPath();
+    ctx.moveTo(x1, bracketY + tickH);
+    ctx.lineTo(x1, bracketY);
+    ctx.stroke();
+
+    // Line to center (gap for number)
+    ctx.beginPath();
+    ctx.moveTo(x1, bracketY);
+    ctx.lineTo(midX - 8, bracketY);
+    ctx.stroke();
+
+    // Line from center to right
+    ctx.beginPath();
+    ctx.moveTo(midX + 8, bracketY);
+    ctx.lineTo(x2, bracketY);
+    ctx.stroke();
+
+    // Right tick
+    ctx.beginPath();
+    ctx.moveTo(x2, bracketY);
+    ctx.lineTo(x2, bracketY + tickH);
+    ctx.stroke();
+
+    // Number
+    ctx.fillStyle = c.muted;
+    ctx.font = `bold 9px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tupletNum.toString(), midX, bracketY);
+  }
+}
+
+/**
+ * Draw a single tie arc above the staff when the beat contains tied notes.
+ * Instead of one arc per string, draws one clean arc spanning the whole chord — like Songsterr.
+ */
+function _drawChordTie(ctx, c, event, x, staffY, beatIdx, measure, timeline, beatPositions) {
+  const tieNotes = event.notes.filter(n => n.tieOrigin);
+  if (tieNotes.length === 0) return;
+
+  // Skip tie arcs for notes inside a tuplet group — the bracket handles it
+  if (event.tupletNum > 0) return;
+
+  // Find the next beat that has the tie destination
+  let nextX = null;
+  let sameSystem = true;
+  for (let j = beatIdx + 1; j < Math.min(beatIdx + 15, timeline.length); j++) {
+    const targetEvent = timeline[j];
+    const hasTieDest = targetEvent.notes.some(n => n.tieDestination && tieNotes.some(t => t.string === n.string));
+    if (hasTieDest && beatPositions[j]) {
+      const pos = beatPositions[j];
+      nextX = pos.x;
+      sameSystem = pos.y === beatPositions[beatIdx]?.y;
+      break;
+    }
+  }
+
+  if (nextX === null && !beatPositions[beatIdx]) return;
+
+  // Arc drawn above the staff
+  const arcY = staffY - 6;
+  const arcH = -10;
+
+  ctx.strokeStyle = c.muted;
+  ctx.lineWidth = 1;
+
+  if (nextX !== null && sameSystem) {
+    const midX = (x + nextX) / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + C.hopoInset, arcY);
+    ctx.quadraticCurveTo(midX, arcY + arcH, nextX - C.hopoInset, arcY);
+    ctx.stroke();
+  } else {
+    // Cross-system: arc to the end of the measure
+    const exitX = measure._renderedX + measure._renderedWidth;
+    const midX = (x + exitX) / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + C.hopoInset, arcY);
+    ctx.quadraticCurveTo(midX, arcY + arcH, exitX, arcY);
+    ctx.stroke();
+  }
 }
 
 function _drawConnector(ctx, c, note, x, y, staffY, stringCount, beatIdx, event, measure, timeline, beatPositions) {
@@ -307,11 +438,17 @@ function _drawConnector(ctx, c, note, x, y, staffY, stringCount, beatIdx, event,
         ctx.quadraticCurveTo(midX, y + arcH, nextX - C.hopoInset, nextY + C.hopoArcOffsetY);
         ctx.stroke();
       } else if (note.slide) {
+        // Diagonal line angled by pitch direction (same string = same y, so use fret to determine angle)
+        const target = timeline[nextBeat].notes.find(n => n.string === note.string);
+        const slideUp = target && target.fret > note.fret;
+        const slideDown = target && target.fret < note.fret;
+        const yOffset = slideUp ? 4 : slideDown ? -4 : 0;
+
         ctx.strokeStyle = c.section;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(x + C.slideInset, y);
-        ctx.lineTo(nextX - C.slideInset, nextY);
+        ctx.moveTo(x + C.slideInset, y + yOffset);
+        ctx.lineTo(nextX - C.slideInset, nextY - yOffset);
         ctx.stroke();
       }
     } else {

@@ -270,8 +270,6 @@ export class TabRenderer {
     const result = computeLayout(
       this.track,
       containerWidth,
-      TAB_CONSTANTS.measuresPerLine,
-      TAB_CONSTANTS.maxMeasuresPerLine,
     );
 
     this.beatPositions = result.beatPositions;

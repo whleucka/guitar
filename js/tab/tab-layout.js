@@ -1,4 +1,4 @@
-// Tab layout computation — system grouping, proportional beat spacing, time signatures
+// Tab layout computation — dynamic system grouping, proportional beat spacing, time signatures
 // Pure computation module: no canvas, no DOM dependency.
 
 import { TAB_CONSTANTS } from './tab-constants.js';
@@ -31,37 +31,75 @@ export function computeTimeSigFlags(allMeasures, systems) {
 }
 
 /**
- * Group measures into systems (lines) with a fixed count per line.
- * @param {Array} allMeasures
- * @param {number} perLine - measures per system
- * @returns {Array} systems - [{ measures }]
+ * Compute the "natural" width a measure needs based on its beat count and content.
+ * More beats / wider fret numbers = more space needed.
  */
-export function groupMeasuresIntoSystems(allMeasures, perLine) {
-  const systems = [];
-  for (let i = 0; i < allMeasures.length; i += perLine) {
-    const batch = allMeasures.slice(i, i + perLine);
-    systems.push({ measures: batch });
+function measureNaturalWidth(measure, timeline) {
+  const C = TAB_CONSTANTS;
+  const beatCount = measure.beatIndices.length;
+
+  // Base width per measure + per-beat spacing
+  let width = 60 + beatCount * 28;
+
+  // Extra width for double-digit frets and dense chords
+  for (const bIdx of measure.beatIndices) {
+    const event = timeline[bIdx];
+    if (!event) continue;
+    if (event.notes.some(n => n.fret >= 10)) width += 10;
+    if (event.notes.length > 3) width += 6;
   }
+
+  return Math.max(width, 120);
+}
+
+/**
+ * Dynamically group measures into systems (lines) by filling each line
+ * until adding another measure would exceed the available width.
+ * Falls back to at least 1 measure per line.
+ */
+function groupMeasuresDynamic(allMeasures, timeline, availableWidth) {
+  const C = TAB_CONSTANTS;
+  const systems = [];
+  let i = 0;
+
+  while (i < allMeasures.length) {
+    const systemMeasures = [];
+    let usedWidth = 0;
+
+    while (i < allMeasures.length) {
+      const m = allMeasures[i];
+      const natWidth = measureNaturalWidth(m, timeline) + C.measurePadding * 2;
+
+      if (systemMeasures.length > 0 && usedWidth + natWidth > availableWidth) {
+        break; // This measure would overflow — start a new line
+      }
+
+      systemMeasures.push(m);
+      usedWidth += natWidth;
+      i++;
+    }
+
+    systems.push({ measures: systemMeasures });
+  }
+
   return systems;
 }
 
 /**
  * Compute full layout: beat positions, system coordinates, canvas dimensions.
+ * Measures per line is determined dynamically by content width.
  * @param {object} track - { timeline, measures, stringCount }
  * @param {number} containerWidth
- * @param {number} measuresPerLine
- * @param {number} maxMeasuresPerLine
  * @returns {{ beatPositions: Array, systems: Array, totalWidth: number, totalHeight: number }}
  */
-export function computeLayout(track, containerWidth, measuresPerLine, maxMeasuresPerLine) {
+export function computeLayout(track, containerWidth) {
   const C = TAB_CONSTANTS;
   const { timeline } = track;
   const availableWidth = Math.max(containerWidth - C.marginLeft - C.marginRight, 400);
   const totalWidth = containerWidth;
 
   const allMeasures = track.measures;
-  const perLine = Math.min(measuresPerLine, maxMeasuresPerLine);
-  const systems = groupMeasuresIntoSystems(allMeasures, perLine);
+  const systems = groupMeasuresDynamic(allMeasures, timeline, availableWidth);
 
   const staffHeight = (track.stringCount - 1) * C.lineSpacing;
   const systemHeight = staffHeight + C.marginTop + C.marginBottom;
@@ -76,27 +114,15 @@ export function computeLayout(track, containerWidth, measuresPerLine, maxMeasure
     system.y = currentY;
     system.height = systemHeight;
 
-    // Calculate proportional widths based on rhythmic and visual complexity
-    const complexities = system.measures.map(m => {
-      let score = Math.max(4, m.beatIndices.length);
-
-      for (const bIdx of m.beatIndices) {
-        const event = timeline[bIdx];
-        if (event && event.notes.some(n => n.fret >= 10)) {
-          score += 1.5;
-        }
-        if (event && event.notes.length > 2) {
-          score += 0.3;
-        }
-      }
-      return score;
-    });
-    const totalComplexity = complexities.reduce((a, b) => a + b, 0);
+    // Compute natural widths for proportional scaling to fill the line
+    const naturalWidths = system.measures.map(m => measureNaturalWidth(m, timeline));
+    const totalNatural = naturalWidths.reduce((a, b) => a + b, 0);
 
     let currentX = C.marginLeft;
     for (let mIdx = 0; mIdx < system.measures.length; mIdx++) {
       const measure = system.measures[mIdx];
-      const measureWidth = (complexities[mIdx] / totalComplexity) * availableWidth;
+      // Scale proportionally to fill available width
+      const measureWidth = (naturalWidths[mIdx] / totalNatural) * availableWidth;
 
       const hasTimeSig = timeSigFlags.has(measure);
       const beatDuration = 60 / measure.tempo;

@@ -174,6 +174,7 @@ export function buildTimeline(score, trackIndex) {
             notes: beatNotes,
             rhythmLabel: RHYTHM_LABELS[rhythm.noteValue] || 'Q',
             dotted: rhythm.dots > 0,
+            tupletNum: rhythm.tupletNum || 0,
             tempo,
             dynamic: beat.dynamic || 'MF',
           });
