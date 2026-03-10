@@ -186,10 +186,20 @@ body.tabs-expanded .tab-mixer-toggle {
   white-space: nowrap;
   user-select: none;
 }
-
-.tab-mixer-track.selected .tab-mixer-name {
-  font-weight: 600;
+.tab-viewer-group {
+  width: 100%;
+  max-width: 1600px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
+
+.tab-header {
+  flex-shrink: 0;
+}
+
+/* ... existing tab-header children ... */
 
 /* Canvas container */
 .tab-canvas-container {
@@ -197,20 +207,23 @@ body.tabs-expanded .tab-mixer-toggle {
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   overflow: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .tab-canvas-wrap {
   position: relative;
   overflow-x: hidden;
   overflow-y: auto;
-  max-height: 70vh;
+  flex: 1;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: var(--bg-surface) var(--bg-secondary);
 }
 
 body.tabs-expanded .tab-canvas-wrap {
-  max-height: calc(100vh - 40px);
+  max-height: none;
 }
 
 .tab-canvas-wrap::-webkit-scrollbar {

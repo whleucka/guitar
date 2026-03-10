@@ -1,13 +1,15 @@
 #app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 #toolbar {
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   padding: 0 1rem;
+  flex-shrink: 0;
 }
 
 .toolbar-inner {
@@ -66,8 +68,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 2rem 1rem;
-  gap: 2rem;
+  padding: 1.5rem 1rem;
+  gap: 1.5rem;
+  overflow: hidden; /* Prevent global scrollbar, rely on internal scrolls */
+  width: 100%;
 }
 
 body.tabs-expanded #toolbar,
@@ -83,6 +87,7 @@ body.tabs-expanded #main {
 #fretboard-container {
   width: 100%;
   max-width: 1600px;
+  flex-shrink: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -90,18 +95,28 @@ body.tabs-expanded #main {
 #tab-container {
   width: 100%;
   max-width: 1600px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 #controls-container {
   width: 100%;
   max-width: 1600px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .view-panel {
+  flex: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 1.5rem;
   justify-content: center;
+  overflow-y: auto; /* Default scroll for Scales/Chords */
+  width: 100%;
 }
 
 .view-panel.hidden {
@@ -109,8 +124,10 @@ body.tabs-expanded #main {
 }
 
 #view-tabs {
-  display: block;
+  display: flex;
+  flex-direction: column;
   width: 100%;
+  overflow: hidden; /* Tabs manage their own scroll */
 }
 
 #view-tabs.hidden {
