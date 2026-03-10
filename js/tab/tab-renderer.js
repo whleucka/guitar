@@ -166,7 +166,7 @@ export class TabRenderer {
     // Position the DOM cursor (GPU-composited — no canvas redraw)
     const top = system.y + C.marginTop - C.cursorOverhang;
     const height = system.height - C.marginTop - C.marginBottom + 2 * C.cursorOverhang;
-    this.cursorEl.style.display = '';
+    this.cursorEl.style.display = 'block';
     this.cursorEl.style.transform = `translate(${x}px, ${top}px)`;
     this.cursorEl.style.height = `${height}px`;
 
