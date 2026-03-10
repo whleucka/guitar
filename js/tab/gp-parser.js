@@ -1,12 +1,15 @@
 // Guitar Pro (.gp) file parser — ZIP + GPIF XML extraction
 
+import { getJSZip } from '../lib/vendors.js';
+
 /**
  * Parse a .gp file (ArrayBuffer) into a normalized score object.
  */
 export async function parseGPFile(arrayBuffer) {
+  const JSZip = getJSZip();
   let zip;
   try {
-    zip = await window.JSZip.loadAsync(arrayBuffer);
+    zip = await JSZip.loadAsync(arrayBuffer);
   } catch (err) {
     throw new Error('Not a valid Guitar Pro 7/8 file (.gp is a ZIP-based format). Older .gp5/.gp4 files are not supported.');
   }
@@ -68,30 +71,34 @@ function parseGPIF(doc) {
 
     for (const prop of el.querySelectorAll('Properties > Property')) {
       const name = prop.getAttribute('name');
-      const val = (textContent(prop, 'Value') || textContent(prop, 'Number') || prop.textContent.trim() || '0');
+      const val = (textContent(prop, 'Value') || textContent(prop, 'Number') || prop.textContent.trim());
+      
+      // If the property exists but val is null/empty, we assume it's a true flag.
+      // If val is "false" or "0", it's explicitly false.
+      const isTrue = (val === null || val === '') || (val !== 'false' && val !== '0');
       
       if (name === 'Fret') {
-        fret = parseInt(val);
+        fret = parseInt(val || '0');
       } else if (name === 'String') {
-        string = parseInt(val);
+        string = parseInt(val || '0');
       } else if (name === 'Midi') {
-        midi = parseInt(val);
+        midi = parseInt(val || '0');
       } else if (name === 'Muted') {
-        muted = true;
+        muted = isTrue;
       } else if (name === 'PalmMuted') {
-        palmMuted = true;
+        palmMuted = isTrue;
       } else if (name === 'HopoOrigin') {
-        hopoOrigin = true;
+        hopoOrigin = isTrue;
       } else if (name === 'HopoDestination') {
-        hopoDestination = true;
+        hopoDestination = isTrue;
       } else if (name === 'Slide') {
-        slide = true;
+        slide = isTrue;
       } else if (name === 'Bended') {
-        bended = true;
+        bended = isTrue;
       } else if (name === 'Harmonic') {
-        harmonic = true;
+        harmonic = isTrue;
       } else if (name === 'Vibrato') {
-        vibrato = true;
+        vibrato = isTrue;
       } else if (name === 'PickStroke') {
         pickStroke = val || 'None';
       }
@@ -101,8 +108,8 @@ function parseGPIF(doc) {
     if (tieEl) {
       const origin = tieEl.getAttribute('origin');
       const dest = tieEl.getAttribute('destination');
-      tieOrigin = origin === 'true';
-      tieDestination = dest === 'true';
+      tieOrigin = origin === 'true' || origin === '1';
+      tieDestination = dest === 'true' || dest === '1';
     }
 
     notes.set(id, {

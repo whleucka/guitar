@@ -3,16 +3,7 @@
 import { TUNING, FRET_COUNT, LAYOUT, STRING_WIDTHS, FRET_MARKERS, DOUBLE_MARKERS, NOTE_RADIUS } from '../config.js';
 import { getNoteInfo } from '../music/notes.js';
 import { computeFretPositions, computeStringPositions, fretMidX } from './fretboard-layout.js';
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-function svgEl(tag, attrs = {}) {
-  const el = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    el.setAttribute(k, v);
-  }
-  return el;
-}
+import { svgEl, SVG_NS } from '../ui/dom-helpers.js';
 
 /**
  * Build the complete fretboard SVG and return { svg, noteElements }.

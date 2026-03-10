@@ -1,0 +1,83 @@
+// Shared tab rendering/layout constants
+// Extracted into a leaf module (no imports) to avoid circular dependency issues.
+
+export const TAB_CONSTANTS = {
+  lineSpacing: 14,
+  measurePadding: 12,
+  marginLeft: 50,
+  marginRight: 20,
+  marginTop: 70,
+  marginBottom: 30,
+  systemSpacing: 40,
+  cursorWidth: 3,
+  fontSize: 12,
+  sectionFontSize: 10,
+  measuresPerLine: 4,
+  maxMeasuresPerLine: 5,
+  titleHeight: 35,
+
+  // Annotation offsets
+  tabLabelX: 20,
+  tabLabelOffsetTop: -6,
+  tabLabelOffsetMid: 3,
+  tabLabelOffsetBot: 12,
+  sectionLabelOffsetY: -40,
+  measureNumOffsetX: 4,
+  measureNumOffsetY: -12,
+  pmLabelOffsetY: -20,
+  pmDashPattern: [2, 2],
+  pmFontSize: 8,
+  annotationFontSize: 7,
+  annotationOffsetY: -8,
+  slideInset: 6,
+  hopoInset: 4,
+  hopoArcHeight: -10,
+  hopoArcOffsetY: -3,
+  pickStrokeOffsetY: 8,
+  pickStrokeFontSize: 8,
+  cursorOverhang: 5,
+  noteTextWidthSingle: 10,
+  noteTextWidthDouble: 16,
+  noteTextPadding: 2,
+  noteTextHalfHeight: 6,
+  barlineEndWidth: 2,
+  barlineStartInset: -10,
+  barlineEndInset: 10,
+  measureNumFontSize: 11,
+  tabLabelFontSize: 10,
+  titleFontSize: 12,
+  loopMarkerWidth: 2,
+  loopMarkerFontSize: 10,
+  loopMarkerBottomOffset: -2,
+  scrollPaddingTop: 50,
+  scrollPaddingBottom: 150,
+  scrollTargetOffset: 100,
+
+  // Vibrato & Bends
+  vibratoAmplitude: 3,
+  vibratoFrequency: 6,
+  vibratoLength: 15,
+  bendWidth: 12,
+  bendHeight: 20,
+  bendFontSize: 9,
+
+  // Time signature
+  timeSigFontSize: 16,
+  timeSigPadLeft: 6,
+  timeSigWidth: 22,
+  timeSigSpacing: 15,
+
+  // Rhythm stems
+  stemOffset: 6,
+  stemLength: 12,
+  stemWidth: 1.5,
+  flagLength: 6,
+  flagSpacing: 3,
+  beamThickness: 2,
+  noteheadRadius: 2.5,
+  restFontSize: 10,
+
+  // Rhythmic layout
+  minNoteSpacing: 18,
+  beatSpacing: 8,
+};

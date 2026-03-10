@@ -205,5 +205,40 @@ export function buildTimeline(score, trackIndex) {
     });
   }
 
+  // --- Validate tie pairs ---
+  // Strip orphaned ties: a tieOrigin without a matching tieDestination on the
+  // next same-string note (or vice versa) produces nonsensical arcs, especially
+  // at repeat boundaries where the GP file's tie flags don't account for the
+  // expanded playback order.
+  for (let i = 0; i < timeline.length; i++) {
+    const event = timeline[i];
+    for (const note of event.notes) {
+      if (note.tieOrigin) {
+        // Look forward for the next note on the same string
+        let found = false;
+        for (let j = i + 1; j < Math.min(i + 15, timeline.length); j++) {
+          const target = timeline[j].notes.find(n => n.string === note.string);
+          if (target) {
+            found = target.tieDestination;
+            break;
+          }
+        }
+        if (!found) note.tieOrigin = false;
+      }
+      if (note.tieDestination) {
+        // Look backward for the previous note on the same string
+        let found = false;
+        for (let j = i - 1; j >= Math.max(i - 15, 0); j--) {
+          const target = timeline[j].notes.find(n => n.string === note.string);
+          if (target) {
+            found = target.tieOrigin;
+            break;
+          }
+        }
+        if (!found) note.tieDestination = false;
+      }
+    }
+  }
+
   return { timeline, measures };
 }

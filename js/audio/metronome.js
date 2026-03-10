@@ -1,7 +1,8 @@
 // Metronome — scheduling-ahead pattern for rock-solid timing
 
 import { METRONOME } from '../config.js';
-import { getAudioContext, getMasterOutput } from './audio-engine.js';
+import { getAudioContext } from './audio-engine.js';
+import { scheduleClick } from './metronome-click.js';
 import { events, METRONOME_TICK } from '../events.js';
 
 export class Metronome {
@@ -74,26 +75,6 @@ export class Metronome {
   }
 
   _scheduleClick(time, isDownbeat) {
-    const ctx = getAudioContext();
-    const output = getMasterOutput();
-
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = isDownbeat ? METRONOME.clickFreqHigh : METRONOME.clickFreqLow;
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(METRONOME.clickGain, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + METRONOME.clickDuration);
-
-    osc.connect(gain);
-    gain.connect(output);
-
-    osc.start(time);
-    osc.stop(time + METRONOME.clickDuration + 0.01);
-
-    osc.onended = () => {
-      osc.disconnect();
-      gain.disconnect();
-    };
+    scheduleClick(time, isDownbeat);
   }
 }

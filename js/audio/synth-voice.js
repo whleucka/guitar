@@ -1,6 +1,7 @@
 // Plucked string synthesis and Sampled Soundfont voices
 
 import { getAudioContext, getMasterOutput } from './audio-engine.js';
+import { getSoundfont } from '../lib/vendors.js';
 
 // --- State and Config ---
 export const VOICE_TYPES = {
@@ -104,11 +105,12 @@ export async function setVoiceType(type) {
   }
 
   // Load sample-based instrument
-  if (window.Soundfont) {
+  const Soundfont = getSoundfont();
+  if (Soundfont) {
     isLoading = true;
     try {
       // Soundfont player uses its own output, we'll try to route it to our master gain
-      currentInstrument = await window.Soundfont.instrument(ctx, type, {
+      currentInstrument = await Soundfont.instrument(ctx, type, {
         destination: getMasterOutput()
       });
       console.log(`Loaded sampler voice: ${type}`);

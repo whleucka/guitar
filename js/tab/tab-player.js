@@ -1,10 +1,10 @@
 // Tab playback engine — multi-track scheduling-ahead pattern for audio + visual sync
 
-import { getAudioContext, getMasterOutput } from '../audio/audio-engine.js';
+import { getAudioContext } from '../audio/audio-engine.js';
 import { playNote } from '../audio/synth-voice.js';
 import { playDrum } from '../audio/drum-voice.js';
+import { scheduleClick } from '../audio/metronome-click.js';
 import { midiToFrequency } from '../music/notes.js';
-import { METRONOME } from '../config.js';
 import { events, TAB_BEAT_ON, TAB_BEAT_OFF, TAB_POSITION, TAB_STOP } from '../events.js';
 
 const LOOKAHEAD_MS = 100;
@@ -264,27 +264,7 @@ export class TabPlayer {
   }
 
   _scheduleMetronomeClick(time, isDownbeat) {
-    const ctx = getAudioContext();
-    const output = getMasterOutput();
-
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = isDownbeat ? METRONOME.clickFreqHigh : METRONOME.clickFreqLow;
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(METRONOME.clickGain, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + METRONOME.clickDuration);
-
-    osc.connect(gain);
-    gain.connect(output);
-
-    osc.start(time);
-    osc.stop(time + METRONOME.clickDuration + 0.01);
-
-    osc.onended = () => {
-      osc.disconnect();
-      gain.disconnect();
-    };
+    scheduleClick(time, isDownbeat);
   }
 
   // --- rAF-based visual sync ---

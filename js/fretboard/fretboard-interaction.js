@@ -1,10 +1,10 @@
-// Click, hover, and touch handlers for fretboard
+// Fretboard interaction — bridges events from all features (scales, chords, tabs)
+// to the SVG fretboard note circles. Organized by feature section.
 
 import { events, NOTE_PLAY, NOTE_HIGHLIGHT, NOTE_CLEAR_HIGHLIGHT, SHOW_ALL_NOTES, SCALE_SELECT, SCALE_CLEAR, CAGED_POSITION, SCALE_NOTE_ON, SCALE_NOTE_OFF, CHORD_SELECT, CHORD_CLEAR, CHORD_NOTE_ON, CHORD_NOTE_OFF, TAB_BEAT_ON, TAB_BEAT_OFF, TAB_STOP } from '../events.js';
 import { playNote } from '../audio/synth-voice.js';
 import { computeScaleMap, filterCAGEDPosition } from '../music/scales.js';
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
+import { SVG_NS } from '../ui/dom-helpers.js';
 
 /**
  * Wire up interaction on the fretboard.
@@ -12,13 +12,17 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  * @param {Map} noteElements - Map of "string-fret" → { group, noteGroup, hitArea, noteInfo }
  */
 export function setupInteraction(svg, noteElements) {
+  // --- Shared state ---
   let showAllNotes = false;
   const highlightedNotes = new Set(); // note names like 'C', 'F#'
-  let activeScaleMap = null; // Map of "string-fret" → { degree, isRoot }
-  let activeCAGEDMap = null; // Filtered version for CAGED position
-  let activeChordMap = null; // Map of "string-fret" → { degree, isRoot }
+  let activeScaleMap = null;   // Map of "string-fret" → { degree, isRoot }
+  let activeCAGEDMap = null;   // Filtered version for CAGED position
+  let activeChordMap = null;   // Map of "string-fret" → { degree, isRoot }
 
-  // --- Click/touch to play ---
+  // ========================================================================
+  // DIRECT INTERACTION — Click/touch to play, hover to preview
+  // ========================================================================
+
   svg.addEventListener('pointerdown', (e) => {
     const hitArea = e.target.closest('.fb-hit-area');
     if (!hitArea) return;
@@ -65,7 +69,7 @@ export function setupInteraction(svg, noteElements) {
     events.emit(NOTE_PLAY, { string: stringIdx, fret, note: entry.noteInfo });
   });
 
-  // --- Hover to show note name ---
+  // Hover to show note name
   svg.addEventListener('pointerenter', (e) => {
     const hitArea = e.target.closest('.fb-hit-area');
     if (!hitArea) return;
@@ -84,7 +88,10 @@ export function setupInteraction(svg, noteElements) {
     if (entry) entry.noteGroup.classList.remove('hover-show');
   }, true);
 
-  // --- Event bus: highlight specific notes ---
+  // ========================================================================
+  // NOTE HIGHLIGHTING — Individual note toggle buttons
+  // ========================================================================
+
   events.on(NOTE_HIGHLIGHT, ({ noteName }) => {
     highlightedNotes.add(noteName);
     updateDisplay(noteElements, highlightedNotes, showAllNotes, activeChordMap || activeCAGEDMap || activeScaleMap);
@@ -95,13 +102,16 @@ export function setupInteraction(svg, noteElements) {
     updateDisplay(noteElements, highlightedNotes, showAllNotes, activeChordMap || activeCAGEDMap || activeScaleMap);
   });
 
-  // --- Event bus: show/hide all notes ---
+  // Show/hide all notes toggle
   events.on(SHOW_ALL_NOTES, ({ show }) => {
     showAllNotes = show;
     updateDisplay(noteElements, highlightedNotes, showAllNotes, activeChordMap || activeCAGEDMap || activeScaleMap);
   });
 
-  // --- Event bus: scale selection ---
+  // ========================================================================
+  // SCALES — Selection, CAGED positions, playback highlights
+  // ========================================================================
+
   events.on(SCALE_SELECT, ({ root, scale }) => {
     activeScaleMap = computeScaleMap(root, scale);
     activeCAGEDMap = null;
@@ -124,7 +134,7 @@ export function setupInteraction(svg, noteElements) {
     updateDisplay(noteElements, highlightedNotes, showAllNotes, activeChordMap || activeCAGEDMap || activeScaleMap);
   });
 
-  // --- Event bus: scale playback note highlights ---
+  // Scale playback note highlights
   events.on(SCALE_NOTE_ON, ({ key }) => {
     const entry = noteElements.get(key);
     if (entry) {
@@ -146,7 +156,10 @@ export function setupInteraction(svg, noteElements) {
     }
   });
 
-  // --- Event bus: chord selection ---
+  // ========================================================================
+  // CHORDS — Selection and strum highlights
+  // ========================================================================
+
   events.on(CHORD_SELECT, ({ fretboardMap }) => {
     activeChordMap = fretboardMap;
     updateDisplay(noteElements, highlightedNotes, showAllNotes, activeChordMap);
@@ -157,7 +170,7 @@ export function setupInteraction(svg, noteElements) {
     updateDisplay(noteElements, highlightedNotes, showAllNotes, activeCAGEDMap || activeScaleMap);
   });
 
-  // --- Event bus: chord strum note highlights ---
+  // Chord strum note highlights
   events.on(CHORD_NOTE_ON, ({ key }) => {
     const entry = noteElements.get(key);
     if (entry) {
@@ -176,7 +189,10 @@ export function setupInteraction(svg, noteElements) {
     }
   });
 
-  // --- Event bus: tab playback note highlights ---
+  // ========================================================================
+  // TAB VIEWER — Playback note highlights (measure preview + active beat)
+  // ========================================================================
+
   let tabMeasureKeys = new Set();  // all notes in current measure (shown as visible)
   let tabActiveKeys = new Set();   // current beat notes (shown as playing)
 

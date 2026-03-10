@@ -1,12 +1,6 @@
 // Classic chord box SVG renderer
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-function el(tag, attrs = {}) {
-  const e = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-  return e;
-}
+import { svgEl as el } from './dom-helpers.js';
 
 const DIAGRAM = {
   width: 120,
