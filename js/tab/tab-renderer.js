@@ -13,7 +13,7 @@ const TAB = {
   fontSize: 12,
   sectionFontSize: 10,
   measuresPerLine: 4,       // target measures per system (like sheet music)
-  maxMeasuresPerLine: 6,    // never exceed this many
+  maxMeasuresPerLine: 5,    // never exceed this many
   titleHeight: 35,
 
   // Annotation offsets
@@ -36,10 +36,10 @@ const TAB = {
   pickStrokeOffsetY: 8,
   pickStrokeFontSize: 8,
   cursorOverhang: 5,
-  noteTextWidthSingle: 8,
-  noteTextWidthDouble: 12,
-  noteTextPadding: 1,
-  noteTextHalfHeight: 5,
+  noteTextWidthSingle: 10,
+  noteTextWidthDouble: 16,
+  noteTextPadding: 2,
+  noteTextHalfHeight: 6,
   barlineEndWidth: 2,
   barlineStartInset: -10,
   barlineEndInset: 10,
@@ -52,6 +52,14 @@ const TAB = {
   scrollPaddingTop: 50,
   scrollPaddingBottom: 150,
   scrollTargetOffset: 100,
+
+  // Vibrato & Bends
+  vibratoAmplitude: 3,
+  vibratoFrequency: 6,
+  vibratoLength: 15,
+  bendWidth: 12,
+  bendHeight: 20,
+  bendFontSize: 9,
 
   // Time signature
   timeSigFontSize: 16,
@@ -68,6 +76,10 @@ const TAB = {
   beamThickness: 2,         // thickness of beam lines
   noteheadRadius: 2.5,      // radius for filled/open noteheads
   restFontSize: 10,         // font size for rest symbols
+
+  // Rhythmic Layout
+  minNoteSpacing: 18,       // minimum horizontal space for a short note (e.g. 16th)
+  beatSpacing: 8,           // extra padding between beats for visual grouping
 };
 
 export class TabRenderer {
@@ -133,6 +145,16 @@ export class TabRenderer {
     this.overlayCanvas.removeEventListener('click', this._clickListener);
     clearTimeout(this._resizeTimeout);
     this.wrap.remove();
+  }
+
+  setMeasuresPerLine(n) {
+    TAB.measuresPerLine = n;
+    TAB.maxMeasuresPerLine = n + 1;
+    if (this.track) {
+      this._computeLayout();
+      this._renderStatic();
+      this._renderOverlay();
+    }
   }
 
   /**
@@ -229,6 +251,7 @@ export class TabRenderer {
   _computeLayout() {
     if (!this.track) return;
 
+    const { timeline } = this.track;
     const containerWidth = this.wrap.clientWidth || 1000;
     const availableWidth = Math.max(containerWidth - TAB.marginLeft - TAB.marginRight, 400);
     this.totalWidth = containerWidth;
@@ -258,13 +281,32 @@ export class TabRenderer {
       system.y = currentY;
       system.height = systemHeight;
 
-      // All measures in the system get equal width
-      const measureWidth = availableWidth / system.measures.length;
+      // Calculate proportional widths based on rhythmic and visual complexity
+      const complexities = system.measures.map(m => {
+        let score = Math.max(4, m.beatIndices.length);
+        
+        // Add extra weight for measures with many double-digit notes
+        for (const bIdx of m.beatIndices) {
+          const event = timeline[bIdx];
+          if (event && event.notes.some(n => n.fret >= 10)) {
+            score += 1.5; // significantly more room for high frets
+          }
+          if (event && event.notes.length > 2) {
+            score += 0.3; // extra weight for chords
+          }
+        }
+        return score;
+      });
+      const totalComplexity = complexities.reduce((a, b) => a + b, 0);
 
       let currentX = TAB.marginLeft;
-      for (const measure of system.measures) {
-        const numBeats = measure.beatIndices.length || 1;
+      for (let mIdx = 0; mIdx < system.measures.length; mIdx++) {
+        const measure = system.measures[mIdx];
+        const measureWidth = (complexities[mIdx] / totalComplexity) * availableWidth;
+        
         const hasTimeSig = timeSigFlags.has(measure);
+        const beatDuration = 60 / measure.tempo;
+        const totalMeasureBeats = (measure.timeSignature?.num || 4) / ((measure.timeSignature?.den || 4) / 4);
 
         measure._renderedX = currentX;
         measure._renderedWidth = measureWidth;
@@ -275,9 +317,28 @@ export class TabRenderer {
         const innerWidth = measureWidth - leftPad - TAB.measurePadding;
 
         for (let i = 0; i < measure.beatIndices.length; i++) {
-          const beatX = currentX + leftPad + (i + 0.5) * (innerWidth / numBeats);
           const beatIdx = measure.beatIndices[i];
+          const event = timeline[beatIdx];
+          if (!event) continue;
 
+          // Relative time in quarter notes (beats)
+          const beatTime = (event.time - measure.startTime) / beatDuration;
+
+          // Non-linear spacing logic:
+          // We compress subdivisions (8ths, 16ths) slightly towards the start of the beat.
+          // This creates a visual "gap" between beats, making the rhythm much easier to read.
+          
+          const beatInt = Math.floor(beatTime + 0.0001); // Handle precision noise
+          const beatFrac = Math.max(0, beatTime - beatInt); 
+          
+          // Apply power function to "tuck" fractional parts (subdivisions)
+          // Using a softer power (1.1) to avoid overlapping fast triplets.
+          const groupedFrac = Math.pow(beatFrac, 1.1);
+          const weightedTime = beatInt + groupedFrac;
+          
+          const progress = weightedTime / totalMeasureBeats;
+          const beatX = currentX + leftPad + Math.min(0.98, progress) * innerWidth;
+          
           beatPos[beatIdx] = {
             x: beatX,
             y: currentY,
@@ -497,6 +558,34 @@ export class TabRenderer {
         if (!event) continue;
         const x = this.beatPositions[beatIdx].x;
 
+        // Draw rests directly on the staff
+        if (event.notes.length === 0) {
+          ctx.fillStyle = c.muted;
+          const label = event.rhythmLabel;
+          const midY = staffY + staffHeight / 2;
+          
+          if (label === 'W') {
+            // Whole rest: hanging from string 2 (from top)
+            const ry = staffY + TAB.lineSpacing;
+            ctx.fillRect(x - 8, ry, 16, 5);
+          } else if (label === 'H') {
+            // Half rest: sitting on string 3
+            const ry = staffY + TAB.lineSpacing * 2 - 5;
+            ctx.fillRect(x - 8, ry, 16, 5);
+          } else {
+            // Quarter and shorter: centered musical symbols
+            ctx.font = `${TAB.restFontSize + 12}px serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            let glyph = '\u{1D13D}'; // quarter
+            if (label === '8') glyph = '\u{1D13E}';
+            else if (label === '16') glyph = '\u{1D13F}';
+            else if (label === '32') glyph = '\u{1D140}';
+            ctx.fillText(glyph, x, midY);
+          }
+          continue;
+        }
+
         // Pick stroke indicator
         const stroke = event.notes.find(n => n.pickStroke && n.pickStroke !== 'None')?.pickStroke;
         if (stroke) {
@@ -508,56 +597,124 @@ export class TabRenderer {
         }
 
         for (const note of event.notes) {
-          if (note.tieDestination) continue;
           if (note.string < 0 || note.string >= stringCount) continue;
 
           const y = staffY + (stringCount - 1 - note.string) * TAB.lineSpacing;
-          const textW = note.fret >= 10 ? TAB.noteTextWidthDouble : TAB.noteTextWidthSingle;
+          const isTied = note.tieDestination;
+          
+          // Note text width (wider for double digits or tied notes with parens)
+          let textW = note.fret >= 10 ? TAB.noteTextWidthDouble : TAB.noteTextWidthSingle;
+          if (isTied) textW += 6; // extra space for parens
 
           // Background clear behind note text
           ctx.fillStyle = c.bg;
           ctx.fillRect(x - textW / 2 - TAB.noteTextPadding, y - TAB.noteTextHalfHeight, textW + TAB.noteTextPadding * 2, TAB.noteTextHalfHeight * 2);
 
           // Note text
-          ctx.fillStyle = c.text;
-          ctx.font = `bold ${TAB.fontSize}px ${c.fontMono}`;
+          ctx.fillStyle = isTied ? c.muted : c.text;
+          ctx.font = `${isTied ? '' : 'bold '}${TAB.fontSize}px ${c.fontMono}`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
 
-          if (note.muted) ctx.fillText('X', x, y);
-          else ctx.fillText(note.fret, x, y);
+          let label = note.muted ? 'X' : note.fret.toString();
+          if (isTied) label = `(${label})`;
+          ctx.fillText(label, x, y);
 
-          // Harmonic / bend annotations
-          if (note.harmonic || note.bended) {
-            ctx.fillStyle = c.red;
-            ctx.font = `bold ${TAB.annotationFontSize}px sans-serif`;
-            ctx.fillText(note.harmonic ? 'NH' : 'B', x, y + TAB.annotationOffsetY);
+          // Vibrato
+          if (note.vibrato) {
+            ctx.strokeStyle = c.text;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const vy = y - TAB.lineSpacing / 2;
+            const vw = TAB.vibratoLength;
+            for (let vx = 0; vx < vw; vx++) {
+              ctx.lineTo(x + TAB.noteTextWidthSingle + vx, vy + Math.sin(vx * 0.5) * TAB.vibratoAmplitude);
+            }
+            ctx.stroke();
           }
 
-          // Slide / hammer-on lines
-          if (note.slide || note.hopoOrigin) {
-            let nextBeat = null;
-            for (let j = beatIdx + 1; j < Math.min(beatIdx + 10, timeline.length); j++) {
-              if (this.beatPositions[j] && this.beatPositions[j].y === system.y) {
-                const target = timeline[j].notes.find(n => n.string === note.string);
-                if (target) { nextBeat = j; break; }
-              } else break;
+          // Harmonic / bend annotations
+          if (!isTied) {
+            if (note.harmonic) {
+              ctx.fillStyle = c.red;
+              ctx.font = `bold ${TAB.annotationFontSize}px sans-serif`;
+              ctx.fillText('NH', x, y + TAB.annotationOffsetY);
             }
-            if (nextBeat !== null) {
-              const nextX = this.beatPositions[nextBeat].x;
-              const nextY = staffY + (stringCount - 1 - note.string) * TAB.lineSpacing;
-              ctx.strokeStyle = c.section;
+            
+            if (note.bended) {
+              const bx = x + (note.fret >= 10 ? 12 : 8);
+              const by = y;
+              ctx.strokeStyle = c.text;
               ctx.lineWidth = 1;
-              if (note.slide) {
-                ctx.beginPath();
-                ctx.moveTo(x + TAB.slideInset, y);
-                ctx.lineTo(nextX - TAB.slideInset, nextY);
-                ctx.stroke();
+              
+              // Draw bend arrow (vertical curve)
+              ctx.beginPath();
+              ctx.moveTo(bx, by);
+              ctx.quadraticCurveTo(bx + 5, by - TAB.bendHeight / 2, bx + 5, by - TAB.bendHeight);
+              ctx.stroke();
+              
+              // Arrowhead
+              ctx.beginPath();
+              ctx.moveTo(bx + 2, by - TAB.bendHeight + 4);
+              ctx.lineTo(bx + 5, by - TAB.bendHeight);
+              ctx.lineTo(bx + 8, by - TAB.bendHeight + 4);
+              ctx.stroke();
+              
+              // Bend label
+              ctx.fillStyle = c.text;
+              ctx.font = `${TAB.bendFontSize}px sans-serif`;
+              ctx.fillText('Full', bx + 5, by - TAB.bendHeight - 6);
+            }
+          }
+
+          // Slide / hammer-on / tie lines
+          if (note.slide || note.hopoOrigin || note.tieOrigin) {
+            let nextBeat = null;
+            for (let j = beatIdx + 1; j < Math.min(beatIdx + 15, timeline.length); j++) {
+              const target = timeline[j].notes.find(n => n.string === note.string);
+              if (target && (target.hopoDestination || target.tieDestination || note.slide)) {
+                nextBeat = j;
+                break;
+              }
+            }
+            if (nextBeat !== null && this.beatPositions[nextBeat]) {
+              const nextPos = this.beatPositions[nextBeat];
+              const nextX = nextPos.x;
+              const nextY = staffY + (stringCount - 1 - note.string) * TAB.lineSpacing;
+              
+              // Check if they are in the same system (y-coordinate is the same)
+              const sameSystem = nextPos.y === this.beatPositions[beatIdx].y;
+
+              if (sameSystem) {
+                // Arcs for ties and hammer-ons
+                if (note.tieOrigin || note.hopoOrigin) {
+                  ctx.strokeStyle = note.tieOrigin ? c.muted : c.section;
+                  ctx.lineWidth = 1;
+                  const midX = (x + nextX) / 2;
+                  const arcH = note.tieOrigin ? -TAB.hopoArcHeight * 0.7 : TAB.hopoArcHeight;
+                  ctx.beginPath();
+                  ctx.moveTo(x + TAB.hopoInset, y + TAB.hopoArcOffsetY);
+                  ctx.quadraticCurveTo(midX, y + arcH, nextX - TAB.hopoInset, nextY + TAB.hopoArcOffsetY);
+                  ctx.stroke();
+                } else if (note.slide) {
+                  ctx.strokeStyle = c.section;
+                  ctx.lineWidth = 1;
+                  ctx.beginPath();
+                  ctx.moveTo(x + TAB.slideInset, y);
+                  ctx.lineTo(nextX - TAB.slideInset, nextY);
+                  ctx.stroke();
+                }
               } else {
-                const midX = (x + nextX) / 2;
+                // Cross-system rendering: Draw a partial arc exiting the measure
+                const exitX = measure._renderedX + measure._renderedWidth;
+                ctx.strokeStyle = note.tieOrigin ? c.muted : c.section;
+                ctx.lineWidth = 1;
+                const midX = (x + exitX) / 2;
+                const arcH = note.tieOrigin ? -TAB.hopoArcHeight * 0.7 : TAB.hopoArcHeight;
+                
                 ctx.beginPath();
                 ctx.moveTo(x + TAB.hopoInset, y + TAB.hopoArcOffsetY);
-                ctx.quadraticCurveTo(midX, y + TAB.hopoArcHeight, nextX - TAB.hopoInset, nextY + TAB.hopoArcOffsetY);
+                ctx.quadraticCurveTo(midX, y + arcH, exitX, y + (TAB.hopoArcOffsetY / 2));
                 ctx.stroke();
               }
             }
@@ -572,6 +729,10 @@ export class TabRenderer {
     const stemBot = stemTop + TAB.stemLength;
 
     for (const measure of system.measures) {
+      const beatDuration = 60 / measure.tempo;
+      const timeSigNum = measure.timeSignature?.num || 4;
+      const timeSigDen = measure.timeSignature?.den || 4;
+
       // Collect beat positions and rhythm info for beaming
       const beats = [];
       for (const beatIdx of measure.beatIndices) {
@@ -579,38 +740,30 @@ export class TabRenderer {
         if (!event) continue;
         const pos = this.beatPositions[beatIdx];
         if (!pos) continue;
+
+        // Relative time in beats from the start of the measure
+        const beatTime = (event.time - measure.startTime) / beatDuration;
+
+        // A beat is only a "visual rest" if it has no notes at all.
+        // Tied notes should still have stems and beams.
+        const isRest = event.notes.length === 0;
+        const isTied = !isRest && event.notes.every(n => n.tieDestination);
+
         beats.push({
           x: pos.x,
           label: event.rhythmLabel,
           dotted: event.dotted,
-          isRest: event.notes.length === 0 || event.notes.every(n => n.tieDestination),
+          isRest,
+          isTied,
+          beatTime,
         });
       }
 
       for (let i = 0; i < beats.length; i++) {
         const b = beats[i];
-        const { x, label, dotted, isRest } = b;
+        const { x, label, dotted, isRest, isTied } = b;
 
-        if (isRest) {
-          // Draw rest symbol
-          ctx.fillStyle = c.muted;
-          ctx.font = `${TAB.restFontSize}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          const restY = stemTop + TAB.stemLength / 2;
-          // Simple rest glyphs
-          if (label === 'W') {
-            // Whole rest: filled rectangle hanging from line
-            ctx.fillRect(x - 4, stemTop, 8, 3);
-          } else if (label === 'H') {
-            // Half rest: filled rectangle sitting on line
-            ctx.fillRect(x - 4, stemTop + 3, 8, 3);
-          } else {
-            // Quarter and shorter: use a simple symbol
-            ctx.fillText('\u{1D13D}', x, restY); // quarter rest-ish
-          }
-          continue;
-        }
+        if (isRest) continue;
 
         const flagCount = this._flagCount(label);
 
@@ -645,11 +798,13 @@ export class TabRenderer {
           ctx.lineTo(x, stemBot);
           ctx.stroke();
 
-          // Filled notehead
-          ctx.fillStyle = c.muted;
-          ctx.beginPath();
-          ctx.arc(x, stemBot + TAB.noteheadRadius, TAB.noteheadRadius, 0, Math.PI * 2);
-          ctx.fill();
+          // Filled notehead (skip if purely tied)
+          if (!isTied) {
+            ctx.fillStyle = c.muted;
+            ctx.beginPath();
+            ctx.arc(x, stemBot + TAB.noteheadRadius, TAB.noteheadRadius, 0, Math.PI * 2);
+            ctx.fill();
+          }
 
           if (dotted) this._drawDot(ctx, c, x + TAB.noteheadRadius + 4, stemBot + TAB.noteheadRadius);
 
@@ -657,7 +812,29 @@ export class TabRenderer {
           if (flagCount > 0) {
             const next = beats[i + 1];
             const nextFlagCount = next ? this._flagCount(next.label) : 0;
-            const canBeam = nextFlagCount > 0 && !next?.isRest;
+            
+            let shouldBreak = false;
+            if (next) {
+              const currentBeatPos = b.beatTime;
+              const nextBeatPos = next.beatTime;
+
+              // Rule 1: Break at the middle of 4/4 measures for eighth notes (grouping 4+4)
+              // This splits the measure into two equal halves (beats 1-2 and 3-4).
+              if (timeSigNum === 4 && timeSigDen === 4) {
+                // Break if we are crossing the boundary between beat 2 and 3
+                if (currentBeatPos < 1.99 && nextBeatPos >= 1.99) shouldBreak = true;
+              }
+
+              // Rule 2: For 16th notes and shorter, always break at every quarter-note beat boundary
+              // (1.0, 2.0, 3.0, 4.0) to keep subdivisions grouped by the beat.
+              if (flagCount >= 2 || nextFlagCount >= 2) {
+                if (Math.floor(currentBeatPos + 0.005) !== Math.floor(nextBeatPos + 0.005)) {
+                  shouldBreak = true;
+                }
+              }
+            }
+
+            const canBeam = !shouldBreak && nextFlagCount > 0 && !next?.isRest;
 
             if (canBeam) {
               // Draw beams connecting this beat to the next
@@ -667,7 +844,7 @@ export class TabRenderer {
                 const by = stemTop + f * TAB.flagSpacing;
                 ctx.fillRect(x, by, next.x - x, TAB.beamThickness);
               }
-              // Extra flags if this beat has more than next
+              // Extra flags if this beat has more than next (short beams)
               for (let f = beamCount; f < flagCount; f++) {
                 const by = stemTop + f * TAB.flagSpacing;
                 ctx.fillRect(x, by, TAB.flagLength, TAB.beamThickness);

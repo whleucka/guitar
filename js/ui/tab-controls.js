@@ -29,7 +29,7 @@ export function renderTabViewer(container) {
   titleRow.appendChild(mixerToggle);
   header.appendChild(titleRow);
 
-  // Row 1: File + Track + Voice
+  // Row 1: File + Track + Voice + Bars/Line
   const row1 = document.createElement('div');
   row1.className = 'tab-controls-row';
 
@@ -49,6 +49,18 @@ export function renderTabViewer(container) {
   trackSelect.className = 'scale-select';
   trackSelect.innerHTML = '<option value="">Track</option>';
   trackSelect.disabled = true;
+
+  // Bars per line select
+  const barsSelect = document.createElement('select');
+  barsSelect.className = 'scale-select';
+  barsSelect.title = 'Measures per line';
+  [3, 4, 5, 6].forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n;
+    opt.textContent = `${n} Bars/Line`;
+    if (n === 4) opt.selected = true;
+    barsSelect.appendChild(opt);
+  });
 
   // Voice/Instrument Selector
   const voiceSelect = document.createElement('select');
@@ -83,8 +95,16 @@ export function renderTabViewer(container) {
   row1.appendChild(fileBtn);
   row1.appendChild(fileInput);
   row1.appendChild(trackSelect);
+  row1.appendChild(barsSelect);
   row1.appendChild(voiceSelect);
   header.appendChild(row1);
+
+  barsSelect.addEventListener('change', () => {
+    const n = parseInt(barsSelect.value);
+    if (!isNaN(n)) {
+      renderer.setMeasuresPerLine(n);
+    }
+  });
 
   // Row 2: Transport + Tempo + Loop + Metronome
   const row2 = document.createElement('div');
@@ -349,7 +369,7 @@ export function renderTabViewer(container) {
       player.resume();
       playBtn.textContent = '\u23F8 Pause';
     } else {
-      player.play(0);
+      player.play(player.currentIndex);
       playBtn.textContent = '\u23F8 Pause';
     }
   }
@@ -439,11 +459,10 @@ export function renderTabViewer(container) {
       events.emit(TAB_LOADED, { score });
     } catch (err) {
       console.error('GP parse error:', err);
-      const msg = err.message && err.message.includes('Invalid GP')
-        ? err.message
-        : 'Failed to parse file. Ensure it is a valid Guitar Pro (.gp) file.';
+      // Show the actual error message for better debugging
+      const msg = err.message || 'Unknown parsing error';
       fileBtn.textContent = msg;
-      setTimeout(() => { fileBtn.textContent = 'Open GP File'; }, 3000);
+      setTimeout(() => { fileBtn.textContent = 'Open GP File'; }, 5000);
     }
   });
 

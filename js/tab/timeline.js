@@ -143,6 +143,7 @@ export function buildTimeline(score, trackIndex) {
               fret: note.fret,
               string: note.string,
               midi: note.midi,
+              tieOrigin: note.tieOrigin,
               tieDestination: note.tieDestination,
               muted: note.muted,
               palmMuted: note.palmMuted,
@@ -150,6 +151,7 @@ export function buildTimeline(score, trackIndex) {
               hopoDestination: note.hopoDestination,
               slide: note.slide,
               bended: note.bended,
+              vibrato: note.vibrato,
               harmonic: note.harmonic,
               pickStroke: beat.pickStroke || note.pickStroke,
             });

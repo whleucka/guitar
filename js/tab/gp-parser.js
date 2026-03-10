@@ -4,14 +4,31 @@
  * Parse a .gp file (ArrayBuffer) into a normalized score object.
  */
 export async function parseGPFile(arrayBuffer) {
-  const zip = await window.JSZip.loadAsync(arrayBuffer);
+  let zip;
+  try {
+    zip = await window.JSZip.loadAsync(arrayBuffer);
+  } catch (err) {
+    throw new Error('Not a valid Guitar Pro 7/8 file (.gp is a ZIP-based format). Older .gp5/.gp4 files are not supported.');
+  }
+
   const gpifFile = zip.file('Content/score.gpif');
-  if (!gpifFile) throw new Error('Invalid GP file: no score.gpif found');
+  if (!gpifFile) throw new Error('Invalid GP file: score.gpif not found in archive');
 
   const gpifText = await gpifFile.async('string');
   const doc = new DOMParser().parseFromString(gpifText, 'text/xml');
 
-  return parseGPIF(doc);
+  // Check for DOMParser errors
+  const parseError = doc.getElementsByTagName('parsererror');
+  if (parseError.length > 0) {
+    throw new Error('Failed to parse score.gpif (XML error): ' + parseError[0].textContent);
+  }
+
+  try {
+    return parseGPIF(doc);
+  } catch (err) {
+    console.error('GPIF mapping error:', err);
+    throw new Error('Internal mapping error: ' + err.message);
+  }
 }
 
 function parseGPIF(doc) {
@@ -47,14 +64,18 @@ function parseGPIF(doc) {
     let palmMuted = false;
     let pickStroke = null;
 
+    let vibrato = false;
+
     for (const prop of el.querySelectorAll('Properties > Property')) {
       const name = prop.getAttribute('name');
+      const val = (textContent(prop, 'Value') || textContent(prop, 'Number') || prop.textContent.trim() || '0');
+      
       if (name === 'Fret') {
-        fret = parseInt(textContent(prop, 'Fret') || '0');
+        fret = parseInt(val);
       } else if (name === 'String') {
-        string = parseInt(textContent(prop, 'String') || '0');
+        string = parseInt(val);
       } else if (name === 'Midi') {
-        midi = parseInt(textContent(prop, 'Number') || '0');
+        midi = parseInt(val);
       } else if (name === 'Muted') {
         muted = true;
       } else if (name === 'PalmMuted') {
@@ -69,8 +90,10 @@ function parseGPIF(doc) {
         bended = true;
       } else if (name === 'Harmonic') {
         harmonic = true;
+      } else if (name === 'Vibrato') {
+        vibrato = true;
       } else if (name === 'PickStroke') {
-        pickStroke = textContent(prop, 'Value') || 'None';
+        pickStroke = val || 'None';
       }
     }
 
@@ -85,7 +108,7 @@ function parseGPIF(doc) {
     notes.set(id, {
       id, fret, string, midi,
       tieOrigin, tieDestination,
-      muted, palmMuted, hopoOrigin, hopoDestination, slide, bended, harmonic,
+      muted, palmMuted, hopoOrigin, hopoDestination, slide, bended, harmonic, vibrato,
       pickStroke
     });
   }
@@ -100,9 +123,12 @@ function parseGPIF(doc) {
     const noteIds = [];
     const notesEl = el.querySelector('Notes');
     if (notesEl) {
-      for (const nid of notesEl.textContent.trim().split(/\s+/)) {
-        const parsed = parseInt(nid);
-        if (!isNaN(parsed)) noteIds.push(parsed);
+      const text = notesEl.textContent.trim();
+      if (text) {
+        for (const nid of text.split(/\s+/)) {
+          const parsed = parseInt(nid);
+          if (!isNaN(parsed)) noteIds.push(parsed);
+        }
       }
     }
 
@@ -125,9 +151,8 @@ function parseGPIF(doc) {
   for (const el of root.querySelectorAll('Voices > Voice')) {
     const id = parseInt(el.getAttribute('id'));
     const beatsEl = el.querySelector('Beats');
-    const beatIds = beatsEl
-      ? beatsEl.textContent.trim().split(/\s+/).map(Number).filter(n => !isNaN(n))
-      : [];
+    const text = beatsEl ? beatsEl.textContent.trim() : '';
+    const beatIds = text ? text.split(/\s+/).map(Number).filter(n => !isNaN(n)) : [];
     voices.set(id, { id, beatIds });
   }
 
@@ -136,9 +161,8 @@ function parseGPIF(doc) {
   for (const el of root.querySelectorAll('Bars > Bar')) {
     const id = parseInt(el.getAttribute('id'));
     const voicesEl = el.querySelector('Voices');
-    const voiceIds = voicesEl
-      ? voicesEl.textContent.trim().split(/\s+/).map(Number)
-      : [];
+    const text = voicesEl ? voicesEl.textContent.trim() : '';
+    const voiceIds = text ? text.split(/\s+/).map(Number).filter(n => !isNaN(n)) : [];
     bars.set(id, { id, voiceIds });
   }
 
@@ -154,7 +178,7 @@ function parseGPIF(doc) {
       if (prop.getAttribute('name') === 'Tuning') {
         const pitches = textContent(prop, 'Pitches');
         if (pitches) {
-          tuning = pitches.trim().split(/\s+/).map(Number);
+          tuning = pitches.trim().split(/\s+/).filter(s => s !== '').map(Number);
         }
       }
     }
@@ -191,9 +215,8 @@ function parseGPIF(doc) {
     const [num, den] = timeStr.split('/').map(Number);
 
     const barsEl = el.querySelector('Bars');
-    const barIds = barsEl
-      ? barsEl.textContent.trim().split(/\s+/).map(Number)
-      : [];
+    const text = barsEl ? barsEl.textContent.trim() : '';
+    const barIds = text ? text.split(/\s+/).map(Number).filter(n => !isNaN(n)) : [];
 
     // Section markers
     let section = null;
