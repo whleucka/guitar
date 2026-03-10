@@ -19,3 +19,11 @@ export function getJSZip() {
 export function getSoundfont() {
   return window.Soundfont || null;
 }
+
+/**
+ * Get the JSSynth namespace (js-synthesizer / FluidSynth WASM).
+ * @returns {object|null} - JSSynth global, or null if not loaded
+ */
+export function getJSSynth() {
+  return window.JSSynth || null;
+}

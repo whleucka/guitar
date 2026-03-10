@@ -5,6 +5,7 @@ import { playNote } from '../audio/synth-voice.js';
 import { playDrum } from '../audio/drum-voice.js';
 import { scheduleClick } from '../audio/metronome-click.js';
 import { midiToFrequency } from '../music/notes.js';
+import { isFluidReady, fluidNoteOn, fluidNoteOff, fluidTrackNotesOff, fluidAllNotesOff } from '../audio/fluid-synth.js';
 import { events, TAB_BEAT_ON, TAB_BEAT_OFF, TAB_POSITION, TAB_STOP } from '../events.js';
 
 const LOOKAHEAD_MS = 100;
@@ -12,6 +13,12 @@ const SCHEDULE_INTERVAL_MS = 25;
 
 const PRIMARY_GAIN = 0.7;
 const BACKING_GAIN = 0.35;
+
+// Dynamic velocity mapping
+const DYNAMIC_VELOCITY = {
+  'PPP': 20, 'PP': 35, 'P': 50, 'MP': 65,
+  'MF': 80, 'F': 95, 'FF': 110, 'FFF': 125,
+};
 
 export class TabPlayer {
   constructor() {
@@ -33,6 +40,7 @@ export class TabPlayer {
     // rAF-based visual sync
     this._rafId = null;
     this._pendingVisuals = []; // sorted by scheduledTime
+    this._pendingFluidAudio = []; // precision audio queue for FluidSynth
   }
 
   /** Primary track shortcuts */
@@ -109,6 +117,7 @@ export class TabPlayer {
 
     this._syncMetronome(eventTime);
     this._pendingVisuals = [];
+    this._pendingFluidAudio = [];
 
     this.state = 'playing';
     this.schedulerInterval = setInterval(() => this._scheduler(), SCHEDULE_INTERVAL_MS);
@@ -121,6 +130,8 @@ export class TabPlayer {
     this._clearScheduler();
     this._stopVisualLoop();
     this._pendingVisuals = [];
+    this._pendingFluidAudio = [];
+    if (isFluidReady()) fluidAllNotesOff();
   }
 
   resume() {
@@ -136,6 +147,7 @@ export class TabPlayer {
 
     this._syncMetronome(eventTime);
     this._pendingVisuals = [];
+    this._pendingFluidAudio = [];
 
     this.state = 'playing';
     this.schedulerInterval = setInterval(() => this._scheduler(), SCHEDULE_INTERVAL_MS);
@@ -147,7 +159,9 @@ export class TabPlayer {
     this._clearScheduler();
     this._stopVisualLoop();
     this._pendingVisuals = [];
+    this._pendingFluidAudio = [];
     for (const t of this.tracks) t.currentIndex = 0;
+    if (isFluidReady()) fluidAllNotesOff();
     events.emit(TAB_STOP);
   }
 
@@ -245,8 +259,41 @@ export class TabPlayer {
     return lo < timeline.length ? lo : timeline.length;
   }
 
-  _scheduleTrackAudio(track, scaledTime, event, gain) {
+  _scheduleTrackAudio(track, scaledTime, event, gain, trackPlayerIndex) {
     const noteDur = event.duration / this.tempoScale;
+
+    // Use FluidSynth when available — push to precision audio queue
+    if (isFluidReady()) {
+      // Rest beat: silence the track so notes don't ring through rests
+      if (event.notes.length === 0) {
+        this._pendingFluidAudio.push({ time: scaledTime, trackIdx: trackPlayerIndex, type: 'rest' });
+        return;
+      }
+
+      const velocity = DYNAMIC_VELOCITY[event.dynamic] || 80;
+
+      for (const note of event.notes) {
+        if (note.tieDestination) continue;
+
+        let midi;
+        if (track.isDrum) {
+          midi = note.midi > 0 ? note.midi : note.fret;
+        } else {
+          const baseMidi = (track.tuning && track.tuning[note.string]) || 40;
+          midi = note.midi > 0 ? note.midi : baseMidi + note.fret;
+        }
+
+        const vel = note.muted ? Math.round(velocity * 0.3) : velocity;
+        this._pendingFluidAudio.push({ time: scaledTime, trackIdx: trackPlayerIndex, midi, velocity: vel, type: 'on' });
+
+        if (!note.tieOrigin) {
+          this._pendingFluidAudio.push({ time: scaledTime + noteDur, trackIdx: trackPlayerIndex, midi, type: 'off' });
+        }
+      }
+      return;
+    }
+
+    // Fallback: original Karplus-Strong / drum synth
     if (track.isDrum) {
       for (const note of event.notes) {
         if (note.tieDestination) continue;
@@ -272,6 +319,7 @@ export class TabPlayer {
   _startVisualLoop() {
     const tick = () => {
       if (this.state !== 'playing') return;
+      this._flushFluidAudio();
       this._flushVisuals();
       this._rafId = requestAnimationFrame(tick);
     };
@@ -282,6 +330,29 @@ export class TabPlayer {
     if (this._rafId) {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
+    }
+  }
+
+  _flushFluidAudio() {
+    if (this._pendingFluidAudio.length === 0) return;
+    const now = getAudioContext().currentTime;
+    let i = 0;
+    while (i < this._pendingFluidAudio.length) {
+      const entry = this._pendingFluidAudio[i];
+      if (entry.time <= now) {
+        if (entry.type === 'on') {
+          fluidNoteOn(entry.trackIdx, entry.midi, entry.velocity);
+        } else if (entry.type === 'off') {
+          fluidNoteOff(entry.trackIdx, entry.midi);
+        } else if (entry.type === 'rest') {
+          fluidTrackNotesOff(entry.trackIdx);
+        }
+        // Swap-remove for O(1) deletion
+        this._pendingFluidAudio[i] = this._pendingFluidAudio[this._pendingFluidAudio.length - 1];
+        this._pendingFluidAudio.pop();
+      } else {
+        i++;
+      }
     }
   }
 
@@ -352,7 +423,7 @@ export class TabPlayer {
 
       // Audio (if not muted)
       if (!primary.muted) {
-        this._scheduleTrackAudio(primary, scaledTime, event, PRIMARY_GAIN);
+        this._scheduleTrackAudio(primary, scaledTime, event, PRIMARY_GAIN, this.primaryIndex);
       }
 
       // Queue visual update for rAF-based sync (O(1) measureMap lookup)
@@ -419,7 +490,7 @@ export class TabPlayer {
 
         if (scaledTime > ctx.currentTime + lookahead) break;
 
-        this._scheduleTrackAudio(track, scaledTime, event, BACKING_GAIN);
+        this._scheduleTrackAudio(track, scaledTime, event, BACKING_GAIN, i);
         track.currentIndex++;
       }
     }

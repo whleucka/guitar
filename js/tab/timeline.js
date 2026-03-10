@@ -175,6 +175,7 @@ export function buildTimeline(score, trackIndex) {
             rhythmLabel: RHYTHM_LABELS[rhythm.noteValue] || 'Q',
             dotted: rhythm.dots > 0,
             tempo,
+            dynamic: beat.dynamic || 'MF',
           });
         }
 
@@ -237,6 +238,15 @@ export function buildTimeline(score, trackIndex) {
         }
         if (!found) note.tieDestination = false;
       }
+    }
+  }
+
+  // --- Cap note durations at the next event's start time ---
+  // Prevents notes from ringing into the next beat/measure.
+  for (let i = 0; i < timeline.length - 1; i++) {
+    const gap = timeline[i + 1].time - timeline[i].time;
+    if (gap > 0 && timeline[i].duration > gap) {
+      timeline[i].duration = gap;
     }
   }
 

@@ -1,2 +1,5 @@
 # Binary tab files (copyrighted transcriptions)
 tabs/
+
+# Large soundfont files
+assets/*.sf2

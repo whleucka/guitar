@@ -3,6 +3,7 @@
 import { TabRenderer } from '../tab/tab-renderer.js';
 import { TabPlayer } from '../tab/tab-player.js';
 import { setVoiceType, VOICE_TYPES } from '../audio/synth-voice.js';
+import { initFluidSynth, isFluidReady, isFluidLoading, assignChannels } from '../audio/fluid-synth.js';
 import { events, TAB_LOADED, TAB_BEAT_ON, TAB_POSITION, TAB_STOP } from '../events.js';
 import { VIEW_CHANGE } from './toolbar.js';
 import { buildSelect, buildButton } from './dom-helpers.js';
@@ -242,6 +243,41 @@ export function renderTabViewer(container) {
     }
 
     events.emit(TAB_LOADED, { score });
+
+    // Initialize FluidSynth lazily on first file load
+    _ensureFluidSynth();
+  }
+
+  async function _ensureFluidSynth() {
+    if (isFluidReady() || isFluidLoading()) {
+      // Already loaded or loading — just assign channels
+      if (isFluidReady()) _assignFluidChannels();
+      return;
+    }
+
+    songInfo.textContent += ' \u2014 Loading SoundFont...';
+
+    try {
+      await initFluidSynth((loaded, total) => {
+        const pct = Math.round((loaded / total) * 100);
+        songInfo.textContent = `${score.title} \u2014 ${score.artist} \u2014 SoundFont ${pct}%`;
+      });
+      songInfo.textContent = `${score.title} \u2014 ${score.artist}`;
+      _assignFluidChannels();
+    } catch (err) {
+      console.warn('FluidSynth unavailable, using fallback synth:', err.message);
+      songInfo.textContent = `${score.title} \u2014 ${score.artist}`;
+    }
+  }
+
+  function _assignFluidChannels() {
+    if (!isFluidReady() || !score || allTrackData.length === 0) return;
+    assignChannels(allTrackData.map(td => ({
+      trackIndex: td.trackIndex,
+      isDrum: td.isDrum,
+      midiProgram: score.tracks[td.trackIndex].midiProgram,
+      midiBank: score.tracks[td.trackIndex].midiBank,
+    })));
   }
 
   function initPlayer(primaryTrackIndex) {

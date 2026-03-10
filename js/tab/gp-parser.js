@@ -193,7 +193,18 @@ function parseGPIF(doc) {
     const stringCount = tuning.length;
     const isDrum = tuning.every(v => v === 0);
 
-    tracks.push({ id, name, tuning, stringCount, isDrum });
+    // Extract MIDI program from <Sounds><Sound><MIDI>
+    let midiProgram = isDrum ? 0 : 25; // default: Acoustic Guitar (Steel)
+    let midiBank = 0;
+    const soundMidiEl = el.querySelector('Sounds > Sound > MIDI');
+    if (soundMidiEl) {
+      const prog = textContent(soundMidiEl, 'Program');
+      if (prog !== null) midiProgram = parseInt(prog);
+      const msb = textContent(soundMidiEl, 'MSB');
+      if (msb !== null) midiBank = parseInt(msb);
+    }
+
+    tracks.push({ id, name, tuning, stringCount, isDrum, midiProgram, midiBank });
   }
 
   // --- Tempo automations ---
