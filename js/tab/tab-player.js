@@ -50,6 +50,9 @@ export class TabPlayer {
     this._onStop = null;   // () => void
     this._onSeek = null;   // (time: number) => void
     this._onTempoChange = null; // (scale: number) => void
+
+    // When true, mute all synth audio (for YouTube backing mode)
+    this._synthMuted = false;
   }
 
   /**
@@ -73,6 +76,14 @@ export class TabPlayer {
     this._onStop = null;
     this._onSeek = null;
     this._onTempoChange = null;
+  }
+
+  /**
+   * Mute/unmute synth audio (for YouTube backing mode).
+   * When muted, visuals still play but no synth sounds.
+   */
+  setSynthMuted(muted) {
+    this._synthMuted = muted;
   }
 
   /** Primary track shortcuts */
@@ -362,6 +373,9 @@ export class TabPlayer {
   }
 
   _scheduleTrackAudio(track, scaledTime, event, gain, trackPlayerIndex) {
+    // Skip all synth audio when using external audio (YouTube)
+    if (this._synthMuted) return;
+
     const noteDur = event.duration / this.tempoScale;
 
     // Use FluidSynth when available — push to precision audio queue

@@ -154,8 +154,8 @@ export function renderTabViewer(container) {
       const videoId = getYouTubeVideoId(voice);
       youtubeVoiceActive = true;
       
-      // Mute the synth when using YouTube backing
-      fluidSetVoiceProgram(null);
+      // Mute all synth audio when using YouTube backing
+      player.setSynthMuted(true);
       
       try {
         await loadYouTubeAudio(videoId);
@@ -163,10 +163,14 @@ export function renderTabViewer(container) {
       } catch (err) {
         console.error('Failed to load YouTube audio:', err);
         songInfo.textContent = `${score.title} — ${score.artist} — YouTube failed`;
+        // Re-enable synth on failure
+        player.setSynthMuted(false);
+        youtubeVoiceActive = false;
       }
     } else {
       // Standard synth voice
       youtubeVoiceActive = false;
+      player.setSynthMuted(false);
       unloadYouTube();
 
       if (voice === VOICE_TYPES.KARPLUS) {
