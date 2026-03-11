@@ -6,13 +6,25 @@ import { midiToNoteName } from '../music/notes.js';
 
 const C = TAB_CONSTANTS;
 
-// --- Title ---
+// --- Header (Title & Artist) ---
 
-export function drawTitle(ctx, c, name) {
-  ctx.fillStyle = c.gold;
-  ctx.font = `bold ${C.titleFontSize}px sans-serif`;
-  ctx.textAlign = 'left';
-  ctx.fillText(name.toUpperCase(), C.marginLeft, 25);
+export function drawHeader(ctx, c, name, artist, totalWidth) {
+  const centerX = totalWidth / 2;
+  
+  // Title
+  if (name) {
+    ctx.fillStyle = c.gold;
+    ctx.font = `bold ${C.titleFontSize}px serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(name.toUpperCase(), centerX, 35);
+  }
+  
+  // Artist
+  if (artist) {
+    ctx.fillStyle = c.text;
+    ctx.font = `italic ${C.artistFontSize}px sans-serif`;
+    ctx.fillText(artist, centerX, 60);
+  }
 }
 
 // --- Staff lines ---
@@ -644,15 +656,15 @@ function _drawDot(ctx, c, x, y) {
  * @param {number} totalHeight
  */
 export function renderStaticContent(ctx, c, track, systems, beatPositions, totalWidth, totalHeight) {
-  const { stringCount, timeline, name, tuning } = track;
+  const { stringCount, timeline, title, artist, tuning } = track;
   const staffHeight = (stringCount - 1) * C.lineSpacing;
 
   // Clear
   ctx.fillStyle = c.bg;
   ctx.fillRect(0, 0, totalWidth, totalHeight);
 
-  // Title
-  drawTitle(ctx, c, name);
+  // Header
+  drawHeader(ctx, c, title || track.name, artist, totalWidth);
 
   for (let sIdx = 0; sIdx < systems.length; sIdx++) {
     const system = systems[sIdx];

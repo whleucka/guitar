@@ -39,6 +39,9 @@ export function buildAllTracks(score) {
       measures,
       isDrum: t.isDrum,
       tuning: t.tuning,
+      title: score.title,
+      artist: score.artist,
+      name: t.name, // Track name (e.g. "Steel Guitar")
     });
   });
   return allTrackData;

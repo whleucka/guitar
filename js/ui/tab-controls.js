@@ -351,6 +351,8 @@ export function renderTabViewer(container) {
       timeline: td.timeline,
       measures: td.measures,
       stringCount: track.stringCount,
+      title: score.title,
+      artist: score.artist,
       name: track.name,
       tuning: td.tuning,
     });

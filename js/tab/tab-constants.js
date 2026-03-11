@@ -14,7 +14,7 @@ export const TAB_CONSTANTS = {
   sectionFontSize: 10,
   measuresPerLine: 4,
   maxMeasuresPerLine: 5,
-  titleHeight: 35,
+  titleHeight: 80,
 
   // Annotation offsets
   tabLabelX: 20,
@@ -47,7 +47,8 @@ export const TAB_CONSTANTS = {
   barlineEndInset: 10,
   measureNumFontSize: 11,
   tabLabelFontSize: 10,
-  titleFontSize: 12,
+  titleFontSize: 24,
+  artistFontSize: 16,
   loopMarkerWidth: 2,
   loopMarkerFontSize: 10,
   loopMarkerBottomOffset: -2,

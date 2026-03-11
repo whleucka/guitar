@@ -64,23 +64,18 @@ export function renderControls(container) {
   });
   settingsGroup.appendChild(volWrap);
 
-  // Show/hide all notes toggle - load saved value
+  // Show/hide all notes toggle - do not persist
   const toggleWrap = document.createElement('div');
   toggleWrap.className = 'toggle-control';
-  let showAll = settings.get('showAllNotes');
+  let showAll = false;
   const toggleBtn = document.createElement('button');
   toggleBtn.className = 'toggle-btn';
-  toggleBtn.textContent = showAll ? 'Hide All Notes' : 'Show All Notes';
-  if (showAll) {
-    toggleBtn.classList.add('active');
-    // Emit on next tick so fretboard is ready
-    setTimeout(() => events.emit(SHOW_ALL_NOTES, { show: true }), 0);
-  }
+  toggleBtn.textContent = 'Show All Notes';
+  
   toggleBtn.addEventListener('click', () => {
     showAll = !showAll;
     toggleBtn.classList.toggle('active', showAll);
     toggleBtn.textContent = showAll ? 'Hide All Notes' : 'Show All Notes';
-    settings.set('showAllNotes', showAll);
     events.emit(SHOW_ALL_NOTES, { show: showAll });
   });
   toggleWrap.appendChild(toggleBtn);

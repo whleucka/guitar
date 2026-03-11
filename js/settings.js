@@ -8,7 +8,6 @@ const defaults = {
   volume: 0.5,
   tuning: null, // null means standard E
   view: 'scales',
-  showAllNotes: false,
   scale: null,
   chord: null,
   tempo: 100,
