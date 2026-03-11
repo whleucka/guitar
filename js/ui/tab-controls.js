@@ -228,6 +228,7 @@ export function renderTabViewer(container) {
           // Apply offset: positive = YouTube starts later (has intro)
           // YouTube plays at: tabTime + offset
           const ytTime = Math.max(0, startTime + youtubeOffset);
+          console.log(`[YouTube] Play: tabTime=${startTime.toFixed(2)}, offset=${youtubeOffset}, ytTime=${ytTime.toFixed(2)}`);
           playYouTube(ytTime);
           setYouTubePlaybackRate(player.tempoScale);
         },
