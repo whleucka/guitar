@@ -564,8 +564,8 @@ export class TabPlayer {
 
       if (scaledTime > ctx.currentTime + lookahead) break;
 
-      // Audio (if not muted)
-      if (!primary.muted) {
+      // Audio (if not muted and synth not muted globally)
+      if (!primary.muted && !this._synthMuted) {
         this._scheduleTrackAudio(primary, scaledTime, event, PRIMARY_GAIN, this.primaryIndex);
       }
 
@@ -616,27 +616,30 @@ export class TabPlayer {
     }
 
     // --- Schedule non-primary tracks (audio only) ---
-    for (let i = 0; i < this.tracks.length; i++) {
-      if (i === this.primaryIndex) continue;
-      const track = this.tracks[i];
-      if (track.muted) {
+    // Skip entirely when synth is muted (YouTube mode) - only primary track needed for visuals
+    if (!this._synthMuted) {
+      for (let i = 0; i < this.tracks.length; i++) {
+        if (i === this.primaryIndex) continue;
+        const track = this.tracks[i];
+        if (track.muted) {
+          while (track.currentIndex < track.timeline.length) {
+            const event = track.timeline[track.currentIndex];
+            const scaledTime = this.startTime + event.time / this.tempoScale;
+            if (scaledTime > ctx.currentTime + lookahead) break;
+            track.currentIndex++;
+          }
+          continue;
+        }
+
         while (track.currentIndex < track.timeline.length) {
           const event = track.timeline[track.currentIndex];
           const scaledTime = this.startTime + event.time / this.tempoScale;
+
           if (scaledTime > ctx.currentTime + lookahead) break;
+
+          this._scheduleTrackAudio(track, scaledTime, event, BACKING_GAIN, i);
           track.currentIndex++;
         }
-        continue;
-      }
-
-      while (track.currentIndex < track.timeline.length) {
-        const event = track.timeline[track.currentIndex];
-        const scaledTime = this.startTime + event.time / this.tempoScale;
-
-        if (scaledTime > ctx.currentTime + lookahead) break;
-
-        this._scheduleTrackAudio(track, scaledTime, event, BACKING_GAIN, i);
-        track.currentIndex++;
       }
     }
 
