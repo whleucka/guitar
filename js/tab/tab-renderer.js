@@ -205,6 +205,7 @@ export class TabRenderer {
   setLoop(a, b) {
     this.loopA = a;
     this.loopB = b;
+    this._needsFullOverlayRedraw = true;
     this._renderOverlay();
   }
 
@@ -316,9 +317,34 @@ export class TabRenderer {
     const c = this._colors;
     if (!c) return;
 
-    ctx.clearRect(0, 0, this.totalWidth, this.totalHeight);
-    this._drawCursor(ctx, c);
-    this._drawLoopMarkers(ctx, c);
+    // Only do full clear/redraw when loop markers need updating
+    // For cursor-only updates, use incremental redraw
+    if (this._needsFullOverlayRedraw) {
+      ctx.clearRect(0, 0, this.totalWidth, this.totalHeight);
+      this._drawCursor(ctx, c);
+      this._drawLoopMarkers(ctx, c);
+      this._needsFullOverlayRedraw = false;
+    } else {
+      // Incremental: only clear and redraw the note highlight area
+      this._drawCursorIncremental(ctx, c);
+    }
+  }
+
+  _drawCursorIncremental(ctx, c) {
+    const C = TAB_CONSTANTS;
+    
+    // Clear previous highlight area
+    if (this._lastHighlightPos) {
+      const p = this._lastHighlightPos;
+      ctx.clearRect(p.x - 20, p.staffY - 10, 40, p.systemHeight + 20);
+    }
+    
+    // Draw new highlight
+    if (this.cursorIndex >= 0 && this.cursorEl.style.display !== 'none') {
+      this._highlightCursorNotes();
+      // Cache position for next clear
+      this._lastHighlightPos = this.beatPositions[this.cursorIndex];
+    }
   }
 
   _drawCursor(ctx, c) {
