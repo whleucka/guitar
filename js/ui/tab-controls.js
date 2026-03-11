@@ -89,8 +89,8 @@ export function renderTabViewer(container) {
   const { wrap: ytOffsetWrap, slider: ytOffsetSlider, valueSpan: ytOffsetValue } = buildSlider({
     className: 'yt-offset-control',
     label: 'YT Offset',
-    min: -10,
-    max: 30,
+    min: -30,
+    max: 60,
     value: 0,
     step: 0.1,
     valueText: '0.0s',
@@ -219,13 +219,35 @@ export function renderTabViewer(container) {
     
     // If playing, re-sync YouTube to current position with new offset
     if (player.state === 'playing' && isYouTubeReady()) {
+      _clearYtDelayTimeout();
       const currentTime = player.getPlaybackTime();
       if (currentTime >= 0) {
-        const ytTime = Math.max(0, currentTime + youtubeOffset);
-        seekYouTube(ytTime);
+        const ytTime = currentTime + youtubeOffset;
+        if (ytTime >= 0) {
+          seekYouTube(ytTime);
+        } else {
+          // YouTube shouldn't be playing yet
+          pauseYouTube();
+          const delayMs = Math.abs(ytTime) * 1000 / player.tempoScale;
+          ytDelayTimeout = setTimeout(() => {
+            if (player.state === 'playing') {
+              playYouTube(0);
+            }
+          }, delayMs);
+        }
       }
     }
   });
+
+  // Track delayed YouTube start for negative offsets
+  let ytDelayTimeout = null;
+
+  function _clearYtDelayTimeout() {
+    if (ytDelayTimeout) {
+      clearTimeout(ytDelayTimeout);
+      ytDelayTimeout = null;
+    }
+  }
 
   /**
    * Set up or clear YouTube audio sync callbacks on the player.
@@ -234,21 +256,55 @@ export function renderTabViewer(container) {
     if (youtubeVoiceActive && isYouTubeReady()) {
       player.setExternalAudioCallbacks({
         onPlay: (startTime) => {
-          // Apply offset: positive = YouTube starts later (has intro)
-          // YouTube plays at: tabTime + offset
-          const ytTime = Math.max(0, startTime + youtubeOffset);
-          playYouTube(ytTime);
+          _clearYtDelayTimeout();
           setYouTubePlaybackRate(player.tempoScale);
+          
+          // Compute where YouTube should be relative to tab time
+          // ytTime = tabTime + offset
+          // - Positive offset: YouTube has intro, seek ahead in YouTube
+          // - Negative offset: Tab has intro, delay YouTube start
+          const ytTime = startTime + youtubeOffset;
+          
+          if (ytTime >= 0) {
+            // YouTube should already be playing at this point
+            playYouTube(ytTime);
+          } else {
+            // YouTube shouldn't start yet - delay it
+            const delayMs = Math.abs(ytTime) * 1000 / player.tempoScale;
+            ytDelayTimeout = setTimeout(() => {
+              if (player.state === 'playing') {
+                playYouTube(0);
+              }
+            }, delayMs);
+          }
         },
         onPause: () => {
+          _clearYtDelayTimeout();
           pauseYouTube();
         },
         onStop: () => {
+          _clearYtDelayTimeout();
           stopYouTube();
         },
         onSeek: (time) => {
-          const ytTime = Math.max(0, time + youtubeOffset);
-          seekYouTube(ytTime);
+          _clearYtDelayTimeout();
+          const ytTime = time + youtubeOffset;
+          
+          if (ytTime >= 0) {
+            seekYouTube(ytTime);
+          } else {
+            // Seeking to before YouTube should start - pause YouTube
+            pauseYouTube();
+            // Schedule YouTube to start when tab reaches the right point
+            const delayMs = Math.abs(ytTime) * 1000 / player.tempoScale;
+            if (player.state === 'playing') {
+              ytDelayTimeout = setTimeout(() => {
+                if (player.state === 'playing') {
+                  playYouTube(0);
+                }
+              }, delayMs);
+            }
+          }
         },
         onTempoChange: (scale) => {
           setYouTubePlaybackRate(scale);
