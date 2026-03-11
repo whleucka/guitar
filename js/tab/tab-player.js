@@ -7,6 +7,7 @@ import { scheduleClick } from '../audio/metronome-click.js';
 import { midiToFrequency } from '../music/notes.js';
 import { isFluidReady, fluidNoteOn, fluidNoteOff, fluidTrackNotesOff, fluidAllNotesOff } from '../audio/fluid-synth.js';
 import { events, TAB_BEAT_ON, TAB_BEAT_OFF, TAB_POSITION, TAB_STOP } from '../events.js';
+import { FLUID_SYNTH } from '../config.js';
 
 const LOOKAHEAD_MS = 100;
 const SCHEDULE_INTERVAL_MS = 25;
@@ -182,11 +183,15 @@ export class TabPlayer {
 
   /**
    * Returns the current playback time in the timeline's time space (seconds).
+   * Accounts for audio output latency so visuals sync with audible sound.
    * Returns -1 if not playing.
    */
   getPlaybackTime() {
     if (this.state !== 'playing') return -1;
-    return (getAudioContext().currentTime - this.startTime) * this.tempoScale;
+    const rawTime = (getAudioContext().currentTime - this.startTime) * this.tempoScale;
+    // Delay visual position to account for audio buffer latency
+    // Configurable in config.js FLUID_SYNTH.visualLatencyMs
+    return Math.max(0, rawTime - (FLUID_SYNTH.visualLatencyMs / 1000));
   }
 
   setTempoScale(scale) {

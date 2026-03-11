@@ -3,6 +3,7 @@
 // Provides noteOn/noteOff API that tab-player.js calls instead of synth-voice.js.
 
 import { getAudioContext, getMasterOutput } from './audio-engine.js';
+import { FLUID_SYNTH } from '../config.js';
 
 const SF2_URL = 'assets/SGM-V2.01.sf2';
 const IDB_NAME = 'rifflogic-sf2-cache';
@@ -72,7 +73,8 @@ export async function initFluidSynth(onProgress) {
     synth.init(ctx.sampleRate);
 
     // Create ScriptProcessor audio node and connect to our master output
-    audioNode = synth.createAudioNode(ctx, 1024);
+    // Buffer size is configurable in config.js - increase if audio crackles
+    audioNode = synth.createAudioNode(ctx, FLUID_SYNTH.bufferSize);
     audioNode.connect(getMasterOutput());
 
     // Load SF2 (try IndexedDB cache first)

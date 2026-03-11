@@ -79,3 +79,11 @@ export const METRONOME = {
   lookaheadMs: 100,
   scheduleIntervalMs: 25,
 };
+
+// FluidSynth performance tuning
+// Increase bufferSize if audio crackles (try 8192 or 16384)
+// Increase visualLatencyMs if cursor is ahead of audio
+export const FLUID_SYNTH = {
+  bufferSize: 8192,       // ScriptProcessor buffer size (power of 2: 2048, 4096, 8192, 16384)
+  visualLatencyMs: 200,   // Delay cursor to match audio output latency
+};
