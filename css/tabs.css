@@ -278,3 +278,27 @@ body.tabs-expanded .tab-canvas-wrap {
     font-size: 0.8rem;
   }
 }
+
+/* YouTube sync offset control */
+.yt-offset-control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.yt-offset-control label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.yt-offset-control input[type="range"] {
+  width: 100px;
+  accent-color: var(--accent-red, #e74c3c);
+}
+
+.yt-offset-control .bpm-value {
+  font-size: 0.8rem;
+  color: var(--accent-red, #e74c3c);
+  font-weight: 600;
+  min-width: 3rem;
+}

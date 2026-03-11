@@ -11,7 +11,7 @@ import {
 } from '../audio/youtube-audio.js';
 import { events, TAB_LOADED, TAB_BEAT_ON, TAB_POSITION, TAB_STOP, TUNING_CHANGE } from '../events.js';
 import { VIEW_CHANGE } from './toolbar.js';
-import { buildSelect, buildButton } from './dom-helpers.js';
+import { buildSelect, buildButton, buildSlider } from './dom-helpers.js';
 import { createFileLoader } from './tab-file-loader.js';
 import { createTransport } from './tab-transport.js';
 import { createMixer } from './tab-mixer.js';
@@ -85,10 +85,25 @@ export function renderTabViewer(container) {
     ],
   });
 
+  // YouTube sync offset control (hidden by default)
+  const { wrap: ytOffsetWrap, slider: ytOffsetSlider, valueSpan: ytOffsetValue } = buildSlider({
+    className: 'yt-offset-control',
+    label: 'YT Offset',
+    min: -10,
+    max: 30,
+    value: 0,
+    step: 0.1,
+    valueText: '0.0s',
+  });
+  ytOffsetWrap.style.display = 'none';
+  
+  let youtubeOffset = 0; // seconds to delay YouTube audio start
+
   row1.appendChild(fileLoader.fileBtn);
   row1.appendChild(fileLoader.fileInput);
   row1.appendChild(trackSelect);
   row1.appendChild(voiceSelect);
+  row1.appendChild(ytOffsetWrap);
   header.appendChild(row1);
 
   // --- Row 2: Transport ---
@@ -190,8 +205,17 @@ export function renderTabViewer(container) {
     selectedOption.textContent = oldLabel;
     voiceSelect.disabled = false;
 
+    // Show/hide YouTube offset control
+    ytOffsetWrap.style.display = youtubeVoiceActive ? '' : 'none';
+
     // Update player callbacks based on YouTube state
     _updateYouTubeCallbacks();
+  });
+
+  // YouTube offset slider
+  ytOffsetSlider.addEventListener('input', () => {
+    youtubeOffset = parseFloat(ytOffsetSlider.value);
+    ytOffsetValue.textContent = `${youtubeOffset.toFixed(1)}s`;
   });
 
   /**
@@ -201,8 +225,10 @@ export function renderTabViewer(container) {
     if (youtubeVoiceActive && isYouTubeReady()) {
       player.setExternalAudioCallbacks({
         onPlay: (startTime) => {
-          // YouTube time = tab time / tempoScale (since tab adjusts for tempo)
-          playYouTube(startTime);
+          // Apply offset: positive = YouTube starts later (has intro)
+          // YouTube plays at: tabTime + offset
+          const ytTime = Math.max(0, startTime + youtubeOffset);
+          playYouTube(ytTime);
           setYouTubePlaybackRate(player.tempoScale);
         },
         onPause: () => {
@@ -212,7 +238,8 @@ export function renderTabViewer(container) {
           stopYouTube();
         },
         onSeek: (time) => {
-          seekYouTube(time);
+          const ytTime = Math.max(0, time + youtubeOffset);
+          seekYouTube(ytTime);
         },
         onTempoChange: (scale) => {
           setYouTubePlaybackRate(scale);
