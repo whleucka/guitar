@@ -132,25 +132,14 @@ export async function loadYouTubeAudio(videoId) {
  * @param {number} startTime - Start time in seconds
  */
 export function playYouTube(startTime = 0) {
-  if (!audioElement || !isReady) {
-    console.warn('[YouTube] playYouTube called but not ready');
-    return;
-  }
+  if (!audioElement || !isReady) return;
   
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') {
     ctx.resume();
   }
   
-  console.log(`[YouTube] Seeking to ${startTime}s (seekable: ${_getSeekableRanges()})`);
-  
-  // Set time and play
-  try {
-    audioElement.currentTime = startTime;
-  } catch (e) {
-    console.warn('[YouTube] Seek failed:', e.message);
-  }
-  
+  audioElement.currentTime = startTime;
   audioElement.play().catch(err => {
     console.warn('[YouTube] Play failed:', err.message);
   });
@@ -269,17 +258,6 @@ export function onYouTubeEnded(callback) {
 }
 
 // --- Internal ---
-
-function _getSeekableRanges() {
-  if (!audioElement) return 'no element';
-  const ranges = audioElement.seekable;
-  if (ranges.length === 0) return 'none';
-  let str = '';
-  for (let i = 0; i < ranges.length; i++) {
-    str += `${ranges.start(i).toFixed(1)}-${ranges.end(i).toFixed(1)} `;
-  }
-  return str.trim();
-}
 
 function _cleanup() {
   if (audioElement) {
