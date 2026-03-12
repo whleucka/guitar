@@ -81,6 +81,6 @@ export const TAB_CONSTANTS = {
   restFontSize: 10,
 
   // Rhythmic layout
-  minNoteSpacing: 18,
+  minNoteSpacing: 24,
   beatSpacing: 8,
 };

@@ -49,7 +49,10 @@ function measureNaturalWidth(measure, timeline) {
     if (event.notes.length > 3) width += 6;
   }
 
-  return Math.max(width, 120);
+  // Enforce minimum note spacing so dense passages (16th notes) stay readable
+  const minWidth = beatCount * C.minNoteSpacing + 2 * C.measurePadding;
+
+  return Math.max(width, minWidth, 120);
 }
 
 /**
