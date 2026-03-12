@@ -63,7 +63,7 @@ function parseGPIF(doc) {
     const id = parseInt(el.getAttribute('id'));
     let fret = 0, string = 0, midi = 0;
     let tieOrigin = false, tieDestination = false;
-    let muted = false, hopoOrigin = false, hopoDestination = false, slide = false, bended = false, harmonic = false;
+    let muted = false, hopoOrigin = false, hopoDestination = false, slide = false, slideInBelow = false, slideInAbove = false, slideOutDown = false, slideOutUp = false, bended = false, harmonic = false;
     let palmMuted = false;
     let pickStroke = null;
 
@@ -92,7 +92,12 @@ function parseGPIF(doc) {
       } else if (name === 'HopoDestination') {
         hopoDestination = isTrue;
       } else if (name === 'Slide') {
-        slide = isTrue;
+        const flags = parseInt(val || '0');
+        slide = (flags & 3) !== 0;          // 1=shift slide, 2=legato slide (connect to next note)
+        slideOutDown = (flags & 4) !== 0;    // 4=slide out downward
+        slideOutUp = (flags & 8) !== 0;      // 8=slide out upward
+        slideInBelow = (flags & 16) !== 0;   // 16=slide in from below
+        slideInAbove = (flags & 32) !== 0;   // 32=slide in from above
       } else if (name === 'Bended') {
         bended = isTrue;
       } else if (name === 'Harmonic') {
@@ -112,10 +117,18 @@ function parseGPIF(doc) {
       tieDestination = dest === 'true' || dest === '1';
     }
 
+    // Vibrato can also be a direct child element: <Vibrato>Slight</Vibrato> or <Vibrato>Wide</Vibrato>
+    const vibratoEl = el.querySelector(':scope > Vibrato');
+    if (vibratoEl) {
+      vibrato = true;
+    }
+
     notes.set(id, {
       id, fret, string, midi,
       tieOrigin, tieDestination,
-      muted, palmMuted, hopoOrigin, hopoDestination, slide, bended, harmonic, vibrato,
+      muted, palmMuted, hopoOrigin, hopoDestination,
+      slide, slideInBelow, slideInAbove, slideOutDown, slideOutUp,
+      bended, harmonic, vibrato,
       pickStroke
     });
   }

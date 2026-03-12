@@ -168,7 +168,7 @@ export function renderTabViewer(container) {
 
   const songInfo = document.createElement('span');
   songInfo.className = 'tab-song-info';
-  songInfo.style.display = 'none'; // Hide from view
+  songInfo.style.display = 'none'; // Hidden until a file is loaded
   songInfo.textContent = '';
 
   const infoRow = document.createElement('div');

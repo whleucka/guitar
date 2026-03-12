@@ -28,6 +28,10 @@ body.tabs-expanded .tab-mixer {
   display: none !important;
 }
 
+.tab-header h1 {
+  font-size: 0.75rem;
+}
+
 .tab-header h3 {
   font-size: 0.75rem;
   text-transform: uppercase;

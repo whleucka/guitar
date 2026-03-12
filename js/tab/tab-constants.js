@@ -14,7 +14,7 @@ export const TAB_CONSTANTS = {
   sectionFontSize: 10,
   measuresPerLine: 4,
   maxMeasuresPerLine: 5,
-  titleHeight: 80,
+  titleHeight: 110,
 
   // Annotation offsets
   tabLabelX: 20,
@@ -29,8 +29,8 @@ export const TAB_CONSTANTS = {
   pmLabelOffsetY: -20,
   pmDashPattern: [2, 2],
   pmFontSize: 8,
-  annotationFontSize: 7,
-  annotationOffsetY: -8,
+  annotationFontSize: 8,
+  annotationOffsetY: -10,
   slideInset: 6,
   hopoInset: 4,
   hopoArcHeight: -10,
@@ -47,8 +47,8 @@ export const TAB_CONSTANTS = {
   barlineEndInset: 10,
   measureNumFontSize: 11,
   tabLabelFontSize: 10,
-  titleFontSize: 24,
-  artistFontSize: 16,
+  titleFontSize: 30,
+  artistFontSize: 18,
   loopMarkerWidth: 2,
   loopMarkerFontSize: 10,
   loopMarkerBottomOffset: -2,
@@ -57,9 +57,9 @@ export const TAB_CONSTANTS = {
   scrollTargetOffset: 100,
 
   // Vibrato & Bends
-  vibratoAmplitude: 3,
-  vibratoFrequency: 6,
-  vibratoLength: 15,
+  vibratoAmplitude: 2.5,
+  vibratoFrequency: 4,
+  vibratoLength: 15,  // unused — vibrato now extends to measure end
   bendWidth: 12,
   bendHeight: 20,
   bendFontSize: 9,

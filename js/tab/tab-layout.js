@@ -138,6 +138,8 @@ export function computeLayout(track, containerWidth) {
       const leftPad = C.measurePadding + (hasTimeSig ? C.timeSigPadLeft + C.timeSigWidth : 0);
       const innerWidth = measureWidth - leftPad - C.measurePadding;
 
+      // First pass: compute time-proportional positions
+      const measureBeatPositions = [];
       for (let i = 0; i < measure.beatIndices.length; i++) {
         const beatIdx = measure.beatIndices[i];
         const event = timeline[beatIdx];
@@ -152,8 +154,21 @@ export function computeLayout(track, containerWidth) {
         const progress = weightedTime / totalMeasureBeats;
         const beatX = currentX + leftPad + Math.min(0.98, progress) * innerWidth;
 
-        beatPos[beatIdx] = {
-          x: beatX,
+        measureBeatPositions.push({ beatIdx, x: beatX });
+      }
+
+      // Second pass: enforce minimum spacing between consecutive beats
+      for (let i = 1; i < measureBeatPositions.length; i++) {
+        const prev = measureBeatPositions[i - 1];
+        const curr = measureBeatPositions[i];
+        if (curr.x - prev.x < C.minNoteSpacing) {
+          curr.x = prev.x + C.minNoteSpacing;
+        }
+      }
+
+      for (const bp of measureBeatPositions) {
+        beatPos[bp.beatIdx] = {
+          x: bp.x,
           y: currentY,
           systemHeight: systemHeight,
           staffY: currentY + C.marginTop,

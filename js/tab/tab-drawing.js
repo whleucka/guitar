@@ -17,15 +17,15 @@ export function drawHeader(ctx, c, name, artist, totalWidth) {
     // Using Righteous (available from index.html) for a fancier title
     ctx.font = `500 ${C.titleFontSize}px 'Righteous', cursive`;
     ctx.textAlign = 'center';
-    ctx.fillText(name.toUpperCase(), centerX, 35);
+    ctx.fillText(name.toUpperCase(), centerX, 45);
   }
-  
+
   // Artist
   if (artist) {
     ctx.fillStyle = c.text;
     // Using Inter (available from index.html) for a cleaner artist label
     ctx.font = `italic 600 ${C.artistFontSize}px 'Inter', sans-serif`;
-    ctx.fillText(artist, centerX, 60);
+    ctx.fillText(artist, centerX, 78);
   }
 }
 
@@ -211,11 +211,12 @@ export function drawNotes(ctx, c, system, staffY, stringCount, staffHeight, time
       }
 
       // Draw a single tie arc above the staff for chord ties (instead of per-note arcs)
-      _drawChordTie(ctx, c, event, x, staffY, beatIdx, measure, timeline, beatPositions);
+      _drawChordTie(ctx, c, event, x, staffY, stringCount, beatIdx, measure, timeline, beatPositions);
     }
 
-    // Draw tuplet brackets for this measure
-    _drawTupletBrackets(ctx, c, measure, staffY, timeline, beatPositions);
+    // Draw tuplet brackets and spanning HOPO arcs for this measure
+    _drawTupletBrackets(ctx, c, measure, staffY, staffHeight, timeline, beatPositions);
+    _drawTupletHopoArcs(ctx, c, measure, staffY, stringCount, timeline, beatPositions);
   }
 }
 
@@ -264,41 +265,70 @@ function _drawNote(ctx, c, note, x, staffY, stringCount, beatIdx, event, measure
   if (isTied) label = `(${label})`;
   ctx.fillText(label, x, y);
 
-  // Vibrato
-  if (note.vibrato) {
-    ctx.strokeStyle = c.text;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const vy = y - C.lineSpacing / 2;
-    const vw = C.vibratoLength;
-    for (let vx = 0; vx < vw; vx++) {
-      ctx.lineTo(x + C.noteTextWidthSingle + vx, vy + Math.sin(vx * 0.5) * C.vibratoAmplitude);
-    }
-    ctx.stroke();
-  }
-
-  // Harmonic / bend annotations
+  // Annotations drawn above the staff (vibrato, harmonic, bend)
   if (!isTied) {
+    const aboveY = staffY + C.annotationOffsetY;
+
+    if (note.vibrato) {
+      // Extend to next beat, or to end of measure if last note
+      const bIdx = measure.beatIndices.indexOf(beatIdx);
+      const nextBeatIdx = bIdx >= 0 && bIdx < measure.beatIndices.length - 1
+        ? measure.beatIndices[bIdx + 1]
+        : null;
+      const endX = nextBeatIdx !== null && beatPositions[nextBeatIdx]
+        ? beatPositions[nextBeatIdx].x - C.noteTextWidthSingle
+        : measure._renderedX + measure._renderedWidth - C.measurePadding;
+      _drawVibrato(ctx, c, x, aboveY, endX);
+    }
+
     if (note.harmonic) {
       ctx.fillStyle = c.red;
       ctx.font = `bold ${C.annotationFontSize}px sans-serif`;
-      ctx.fillText('NH', x, y + C.annotationOffsetY);
+      ctx.textAlign = 'center';
+      ctx.fillText('NH', x, aboveY);
     }
 
     if (note.bended) {
-      _drawBend(ctx, c, note, x, y);
+      _drawBend(ctx, c, note, x, aboveY);
     }
   }
 
-  // Slide / hammer-on lines (ties handled by _drawChordTie, tuplets by _drawTupletBrackets)
-  if ((note.slide || note.hopoOrigin) && !event.tupletNum) {
+  // Slide / hammer-on connector lines (skip individual HOPO arcs inside tuplets — drawn as spanning arc)
+  if (note.slide || (note.hopoOrigin && !event.tupletNum)) {
     _drawConnector(ctx, c, note, x, y, staffY, stringCount, beatIdx, event, measure, timeline, beatPositions);
+  }
+
+  // Decorative slide-in / slide-out (no connecting note needed)
+  if (note.slideInBelow || note.slideInAbove || note.slideOutDown || note.slideOutUp) {
+    _drawSlideDecoration(ctx, c, note, x, y);
   }
 }
 
-function _drawBend(ctx, c, note, x, y) {
-  const bx = x + (note.fret >= 10 ? 12 : 8);
-  const by = y;
+/** Songsterr-style vibrato: zigzag wave from note to end of measure */
+function _drawVibrato(ctx, c, x, aboveY, endX) {
+  ctx.strokeStyle = c.text;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  const vy = aboveY;
+  const segW = C.vibratoFrequency;
+  const amp = C.vibratoAmplitude;
+  const startX = x + C.noteTextWidthSingle;
+  const totalW = endX - startX;
+  if (totalW <= 0) return;
+  const segments = Math.max(1, Math.round(totalW / segW));
+  const actualSegW = totalW / segments;
+  ctx.moveTo(startX, vy);
+  for (let i = 0; i < segments; i++) {
+    const sx = startX + i * actualSegW;
+    ctx.lineTo(sx + actualSegW / 2, vy - amp);
+    ctx.lineTo(sx + actualSegW, vy + amp);
+  }
+  ctx.stroke();
+}
+
+function _drawBend(ctx, c, _note, x, aboveY) {
+  const bx = x;
+  const by = aboveY;
   ctx.strokeStyle = c.text;
   ctx.lineWidth = 1;
 
@@ -315,14 +345,15 @@ function _drawBend(ctx, c, note, x, y) {
 
   ctx.fillStyle = c.text;
   ctx.font = `${C.bendFontSize}px sans-serif`;
+  ctx.textAlign = 'center';
   ctx.fillText('Full', bx + 5, by - C.bendHeight - 6);
 }
 
 /**
- * Draw tuplet brackets (e.g. "3" for triplets) above grouped beats.
+ * Draw tuplet brackets (e.g. "3" for triplets) below the staff near rhythm stems.
  * Groups consecutive beats with the same tupletNum into one bracket.
  */
-function _drawTupletBrackets(ctx, c, measure, staffY, timeline, beatPositions) {
+function _drawTupletBrackets(ctx, c, measure, staffY, staffHeight, timeline, beatPositions) {
   const indices = measure.beatIndices;
   let i = 0;
 
@@ -350,7 +381,8 @@ function _drawTupletBrackets(ctx, c, measure, staffY, timeline, beatPositions) {
     const endPos = beatPositions[indices[groupEnd]];
     if (!startPos || !endPos) continue;
 
-    const bracketY = staffY - 14;
+    // Position below rhythm stems
+    const bracketY = staffY + staffHeight + C.stemOffset + C.stemLength + C.noteheadRadius * 2 + 8;
     const tickH = 4;
     const x1 = startPos.x;
     const x2 = endPos.x;
@@ -361,7 +393,7 @@ function _drawTupletBrackets(ctx, c, measure, staffY, timeline, beatPositions) {
 
     // Left tick
     ctx.beginPath();
-    ctx.moveTo(x1, bracketY + tickH);
+    ctx.moveTo(x1, bracketY - tickH);
     ctx.lineTo(x1, bracketY);
     ctx.stroke();
 
@@ -380,7 +412,7 @@ function _drawTupletBrackets(ctx, c, measure, staffY, timeline, beatPositions) {
     // Right tick
     ctx.beginPath();
     ctx.moveTo(x2, bracketY);
-    ctx.lineTo(x2, bracketY + tickH);
+    ctx.lineTo(x2, bracketY - tickH);
     ctx.stroke();
 
     // Number
@@ -393,53 +425,108 @@ function _drawTupletBrackets(ctx, c, measure, staffY, timeline, beatPositions) {
 }
 
 /**
- * Draw a single tie arc above the staff when the beat contains tied notes.
- * Instead of one arc per string, draws one clean arc spanning the whole chord — like Songsterr.
+ * Draw a single spanning HOPO arc over each tuplet group (first to last note on same string).
+ * e.g. 11-12-11 triplet gets one arc from the first 11 to the last 11.
  */
-function _drawChordTie(ctx, c, event, x, staffY, beatIdx, measure, timeline, beatPositions) {
-  const tieNotes = event.notes.filter(n => n.tieOrigin);
-  if (tieNotes.length === 0) return;
+function _drawTupletHopoArcs(ctx, c, measure, staffY, stringCount, timeline, beatPositions) {
+  const indices = measure.beatIndices;
+  let i = 0;
 
-  // Skip tie arcs for notes inside a tuplet group — the bracket handles it
-  if (event.tupletNum > 0) return;
+  while (i < indices.length) {
+    const event = timeline[indices[i]];
+    if (!event || !event.tupletNum || event.tupletNum <= 0) {
+      i++;
+      continue;
+    }
 
-  // Find the next beat that has the tie destination
-  let nextX = null;
-  let sameSystem = true;
-  for (let j = beatIdx + 1; j < Math.min(beatIdx + 15, timeline.length); j++) {
-    const targetEvent = timeline[j];
-    const hasTieDest = targetEvent.notes.some(n => n.tieDestination && tieNotes.some(t => t.string === n.string));
-    if (hasTieDest && beatPositions[j]) {
-      const pos = beatPositions[j];
-      nextX = pos.x;
-      sameSystem = pos.y === beatPositions[beatIdx]?.y;
-      break;
+    // Collect the tuplet group
+    const tupletNum = event.tupletNum;
+    const groupStart = i;
+    while (i < indices.length) {
+      const ev = timeline[indices[i]];
+      if (!ev || ev.tupletNum !== tupletNum) break;
+      i++;
+    }
+    const groupEnd = i - 1;
+    if (groupEnd <= groupStart) continue;
+
+    // Check if this group has HOPO connections
+    const firstEvent = timeline[indices[groupStart]];
+    const lastEvent = timeline[indices[groupEnd]];
+    const hasHopo = firstEvent.notes.some(n => n.hopoOrigin) || lastEvent.notes.some(n => n.hopoDestination);
+    if (!hasHopo) continue;
+
+    // Find matching strings between first and last beat
+    const startPos = beatPositions[indices[groupStart]];
+    const endPos = beatPositions[indices[groupEnd]];
+    if (!startPos || !endPos) continue;
+
+    for (const firstNote of firstEvent.notes) {
+      const lastNote = lastEvent.notes.find(n => n.string === firstNote.string);
+      if (!lastNote) continue;
+
+      const noteY = staffY + (stringCount - 1 - firstNote.string) * C.lineSpacing;
+      const arcY = noteY + C.hopoArcOffsetY;
+      const x1 = startPos.x;
+      const x2 = endPos.x;
+      const midX = (x1 + x2) / 2;
+
+      ctx.strokeStyle = c.section;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x1 + C.hopoInset, arcY);
+      ctx.quadraticCurveTo(midX, arcY + C.hopoArcHeight, x2 - C.hopoInset, arcY);
+      ctx.stroke();
     }
   }
+}
 
-  if (nextX === null && !beatPositions[beatIdx]) return;
-
-  // Arc drawn above the staff
-  const arcY = staffY - 6;
-  const arcH = -10;
+/**
+ * Draw tie arcs per-string at the note's actual position on the staff.
+ */
+function _drawChordTie(ctx, c, event, x, staffY, stringCount, beatIdx, measure, timeline, beatPositions) {
+  const tieNotes = event.notes.filter(n => n.tieOrigin);
+  if (tieNotes.length === 0) return;
 
   ctx.strokeStyle = c.muted;
   ctx.lineWidth = 1;
 
-  if (nextX !== null && sameSystem) {
-    const midX = (x + nextX) / 2;
-    ctx.beginPath();
-    ctx.moveTo(x + C.hopoInset, arcY);
-    ctx.quadraticCurveTo(midX, arcY + arcH, nextX - C.hopoInset, arcY);
-    ctx.stroke();
-  } else {
-    // Cross-system: arc to the end of the measure
-    const exitX = measure._renderedX + measure._renderedWidth;
-    const midX = (x + exitX) / 2;
-    ctx.beginPath();
-    ctx.moveTo(x + C.hopoInset, arcY);
-    ctx.quadraticCurveTo(midX, arcY + arcH, exitX, arcY);
-    ctx.stroke();
+  for (const tieNote of tieNotes) {
+    const noteY = staffY + (stringCount - 1 - tieNote.string) * C.lineSpacing;
+    const arcY = noteY + C.hopoArcOffsetY;
+    const arcH = C.hopoArcHeight;
+
+    // Find the next beat that has the tie destination on the same string
+    let nextX = null;
+    let sameSystem = true;
+    for (let j = beatIdx + 1; j < Math.min(beatIdx + 15, timeline.length); j++) {
+      const targetEvent = timeline[j];
+      const target = targetEvent.notes.find(n => n.tieDestination && n.string === tieNote.string);
+      if (target && beatPositions[j]) {
+        const pos = beatPositions[j];
+        nextX = pos.x;
+        sameSystem = pos.y === beatPositions[beatIdx]?.y;
+        break;
+      }
+    }
+
+    if (nextX === null && !beatPositions[beatIdx]) continue;
+
+    if (nextX !== null && sameSystem) {
+      const midX = (x + nextX) / 2;
+      ctx.beginPath();
+      ctx.moveTo(x + C.hopoInset, arcY);
+      ctx.quadraticCurveTo(midX, arcY + arcH, nextX - C.hopoInset, arcY);
+      ctx.stroke();
+    } else {
+      // Cross-system: arc to the end of the measure
+      const exitX = measure._renderedX + measure._renderedWidth;
+      const midX = (x + exitX) / 2;
+      ctx.beginPath();
+      ctx.moveTo(x + C.hopoInset, arcY);
+      ctx.quadraticCurveTo(midX, arcY + arcH, exitX, arcY);
+      ctx.stroke();
+    }
   }
 }
 
@@ -502,6 +589,39 @@ function _drawConnector(ctx, c, note, x, y, staffY, stringCount, beatIdx, event,
   }
 }
 
+/** Decorative slide lines (slide in from below/above, slide out down/up) */
+function _drawSlideDecoration(ctx, c, note, x, y) {
+  ctx.strokeStyle = c.section;
+  ctx.lineWidth = 1.5;
+  const len = C.slideInset + 6;
+  const rise = 5;
+
+  if (note.slideInBelow) {
+    ctx.beginPath();
+    ctx.moveTo(x - len, y + rise);
+    ctx.lineTo(x - C.slideInset, y);
+    ctx.stroke();
+  }
+  if (note.slideInAbove) {
+    ctx.beginPath();
+    ctx.moveTo(x - len, y - rise);
+    ctx.lineTo(x - C.slideInset, y);
+    ctx.stroke();
+  }
+  if (note.slideOutDown) {
+    ctx.beginPath();
+    ctx.moveTo(x + C.slideInset, y);
+    ctx.lineTo(x + len, y + rise);
+    ctx.stroke();
+  }
+  if (note.slideOutUp) {
+    ctx.beginPath();
+    ctx.moveTo(x + C.slideInset, y);
+    ctx.lineTo(x + len, y - rise);
+    ctx.stroke();
+  }
+}
+
 // --- Rhythm stems ---
 
 export function drawRhythmStems(ctx, c, system, staffY, staffHeight, timeline, beatPositions) {
@@ -539,9 +659,15 @@ export function drawRhythmStems(ctx, c, system, staffY, staffHeight, timeline, b
       const b = beats[i];
       const { x, label, dotted, isRest, isTied } = b;
 
-      if (isRest) continue;
-
       const flagCount = _flagCount(label);
+
+      if (isRest) {
+        // Rests still get beams/flags for rhythm grouping
+        if (flagCount > 0) {
+          _drawBeamsOrFlags(ctx, c, beats, i, flagCount, stemTop, timeSigNum, timeSigDen);
+        }
+        continue;
+      }
 
       if (label === 'W') {
         ctx.strokeStyle = c.muted;
