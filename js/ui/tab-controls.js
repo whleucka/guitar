@@ -597,6 +597,15 @@ export function renderTabViewer(container) {
     // Scroll to top of the page when a new file is loaded
     window.scrollTo(0, 0);
 
+    // Reset to default synth voice when loading a new file
+    youtubeVoiceActive = false;
+    player.setSynthMuted(false);
+    unloadYouTube();
+    voiceSelect.value = VOICE_TYPES.KARPLUS;
+    fluidSetVoiceProgram(null);
+    ytOffsetWrap.style.display = 'none';
+    _updateYouTubeCallbacks();
+
     songInfo.textContent = `${score.title} \u2014 ${score.artist}`;
 
     // Populate track selector (filter out drums)
