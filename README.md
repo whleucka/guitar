@@ -36,9 +36,9 @@ assets/           # SGM-V2.01.sf2 soundfont (247MB)
 ```
 Karplus-Strong (fallback) ─┐
 FluidSynth (WASM/SF2)     ─┤
-Drum Voice                 ─┼─> Master Gain ─> Compressor ─> Output
-Metronome Click            ─┤
-YouTube Audio Element      ─┘
+Drum Voice                ─┼─> Master Gain ─> Compressor ─> Output
+Metronome Click           ─┤
+YouTube Audio Element     ─┘
 ```
 
 ### Tab viewer
