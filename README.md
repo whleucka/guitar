@@ -8,16 +8,16 @@ Built with vanilla JS, Web Audio API, and FluidSynth (WASM).
 
 ## Features
 
-- **Scale & mode explorer** — all major/minor modes, pentatonics, blues, etc. Interactive fretboard with note highlighting
-- **Chord practice** — chord library with fingering diagrams, strum playback
-- **Guitar Pro tab viewer** — load .gp5/.gp6/.gp7 files, rendered to canvas with Songsterr-style notation
-- **Multi-track playback** — plays all tracks with GM-accurate voices via FluidSynth (WASM), track mixer with solo/mute
-- **YouTube backing tracks** — search and sync YouTube audio with tab playback, per-song offset saved automatically
-- **Tempo control** — adjustable playback speed, metronome with click track
-- **Loop mode** — A/B loop points for practicing sections
-- **Multiple voice types** — Karplus-Strong, acoustic, clean electric, overdriven, muted (FluidSynth GM patches)
-- **Fullscreen tab viewer** — distraction-free mode with floating HUD controls
-- **Fretboard overlay** — live fretboard visualization during tab playback
+- **Scale & mode explorer**: all major/minor modes, pentatonics, blues, etc. Interactive fretboard with note highlighting
+- **Chord practice**: chord library with fingering diagrams, strum playback
+- **Guitar Pro tab viewer**: load .gp5/.gp6/.gp7 files, rendered to canvas with Songsterr-style notation
+- **Multi-track playback**: plays all tracks with GM-accurate voices via FluidSynth (WASM), track mixer with solo/mute
+- **YouTube backing tracks**: search and sync YouTube audio with tab playback, per-song offset saved automatically
+- **Tempo control**: adjustable playback speed, metronome with click track
+- **Loop mode**: A/B loop points for practicing sections
+- **Multiple voice types**: Karplus-Strong, acoustic, clean electric, overdriven, muted (FluidSynth GM patches)
+- **Fullscreen tab viewer**: distraction-free mode with floating HUD controls
+- **Fretboard overlay**: live fretboard visualization during tab playback
 
 ## Screenshots
 <img width="1920" height="1200" alt="image" src="https://github.com/user-attachments/assets/463ec01c-1ae6-4c56-a6e9-665029bb55e9" />
