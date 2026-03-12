@@ -57,9 +57,9 @@ Lessons learned, rabbit holes, and things worth remembering.
 
 The SF2 file is 247MB. Loading it into FluidSynth WASM is expensive. We lazy-load it and cache in IndexedDB so subsequent loads skip the network fetch. Even so, initial parse time in WASM is noticeable.
 
-The `ScriptProcessorNode` bridge between FluidSynth and Web Audio is a known bottleneck. Buffer size is 8192 samples — smaller values cause glitches, larger values add latency. There's no good answer here until AudioWorklet integration is solid. The worklet file exists (`js-synthesizer.worklet.js`) but reliability varies across browsers.
+The `ScriptProcessorNode` bridge between FluidSynth and Web Audio is a known bottleneck. Buffer size is 8192 samples. Smaller values cause glitches, larger values add latency (I think...) There's no good answer here until AudioWorklet integration is solid. The worklet file exists (`js-synthesizer.worklet.js`) but reliability varies across browsers.
 
-Tried multiple soundfonts before settling on SGM-V2.01. Most GM soundfonts are either too large (500MB+) or sound terrible for guitar. SGM-V2.01 is a reasonable compromise — decent acoustic/electric guitar patches, full GM coverage for multi-track playback, and the file size is manageable with caching.
+Tried multiple soundfonts before settling on SGM-V2.01. Most GM soundfonts are either too large (500MB+) or sound terrible for guitar. SGM-V2.01 is a reasonable compromise = decent acoustic/electric guitar patches, full GM coverage for multi-track playback, and the file size is manageable with caching.
 
 Karplus-Strong is the default voice and sounds surprisingly good for single-note lines. FluidSynth kicks in when you need accurate GM program changes across tracks (e.g., clean vs. overdriven guitar, bass, keys).
 
@@ -69,7 +69,7 @@ This was the biggest time sink. The goal: play a YouTube backing track synchroni
 
 **The proxy approach**: Browser can't fetch YouTube audio directly (CORS). The server uses `yt-dlp` to grab audio, caches it locally (500MB cap, 24h TTL), and streams it back with range request support for seeking.
 
-**Sync problems**: YouTube audio and MIDI-scheduled tab playback drift. The tab player uses `AudioContext.currentTime` for scheduling, but the YouTube audio element has its own clock. Small timing differences compound over a 5-minute song. We added a user-adjustable offset slider (-30s to +60s) so you can manually nudge the sync. Not perfect, but workable.
+**Sync problems**: YouTube audio and MIDI-scheduled tab playback drift. The tab player uses `AudioContext.currentTime` for scheduling, but the YouTube audio element has its own clock. Small timing differences compound over a 5-minute song. We added a user-adjustable offset slider (-30s to +60s) so you can manually nudge the sync.
 
 **What didn't work**:
 - Trying to use the YouTube IFrame API for audio: too much latency, no precise time control
@@ -86,7 +86,7 @@ Key gotchas:
 - **Vibrato encoding**: Can appear as `<Property name="Vibrato">` inside `<Properties>` OR as a direct `<Vibrato>Slight|Wide</Vibrato>` child element on `<Note>`. Some files use one, some use the other, some use both. You have to check both.
 - **Slide flags are a bitmask**: `1`=shift slide, `2`=legato slide, `4`=slide out down, `8`=slide out up, `16`=slide in from below, `32`=slide in from above. The parser originally treated it as a boolean.
 - **Tuplet rendering**: Triplet brackets belong below the staff (near rhythm stems), not above. HOPO chains inside tuplets (e.g., 11-12-11) look best as a single spanning arc from first to last note, not individual per-note arcs.
-- **Tied notes across systems**: Ties that cross system breaks need special handling — arc to the end of the current system, then a continuation arc at the start of the next.
+- **Tied notes across systems**: Ties that cross system breaks need special handling: arc to the end of the current system, then a continuation arc at the start of the next.
 
 ### CPU / performance
 
