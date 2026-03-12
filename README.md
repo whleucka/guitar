@@ -1,5 +1,7 @@
 # RiffLogic
 
+> Work in progress
+
 Guitar practice tool. Scales, chords, and a Guitar Pro tab viewer with multi-track playback.
 
 Built with vanilla JS, Web Audio API, and FluidSynth (WASM).
@@ -12,7 +14,7 @@ Built with vanilla JS, Web Audio API, and FluidSynth (WASM).
 Serve the project root with any static file server. The YouTube integration requires the proxy:
 
 ```bash
-cd server && npm install && node index.js
+cd server && npm install && node server/index.js
 ```
 
 Needs `yt-dlp` installed for YouTube audio streaming.
@@ -74,7 +76,7 @@ This was the biggest time sink. The goal: play a YouTube backing track synchroni
 - Attempting to sync via `requestAnimationFrame` polling: jittery, especially under CPU load
 - Auto-detecting offset from audio analysis: way too complex for the payoff
 
-The current approach (manual offset + `yt-dlp` streaming) is ugly but reliable.
+The current approach (manual offset + `yt-dlp` streaming) is ugly but reliable. `yt-offset` is saved / song, so you should only have to set it once.
 
 ### GP file parsing
 
