@@ -214,6 +214,26 @@ export class TabPlayer {
     if (this._onPause) this._onPause();
   }
 
+  stop() {
+    this.state = 'stopped';
+    this._clearScheduler();
+    this._stopVisualLoop();
+    this._pendingVisuals = [];
+    this._pendingFluidAudio = [];
+    this._stopFluidInterval();
+    if (isFluidReady()) fluidAllNotesOff();
+
+    this.currentIndex = 0;
+    for (let i = 0; i < this.tracks.length; i++) {
+      this.tracks[i].currentIndex = 0;
+    }
+    this._syncMetronome(0);
+
+    // Notify external audio (YouTube)
+    if (this._onStop) this._onStop();
+    events.emit(TAB_STOP);
+  }
+
   resume() {
     if (this.state !== 'paused' || !this.timeline) return;
     const ctx = getAudioContext();
@@ -250,10 +270,21 @@ export class TabPlayer {
    * Returns the current playback time in the timeline's time space (seconds).
    * In YouTube mode, reads directly from the audio element (single clock source).
    * In synth mode, uses AudioContext and accounts for audio output latency.
-   * Returns -1 if not playing.
    */
   getPlaybackTime() {
-    if (this.state !== 'playing') return -1;
+    const ctx = getAudioContext();
+
+    // Determine latency to subtract for visual sync
+    let latencySecs = FLUID_SYNTH.visualLatencyMs / 1000;
+    if (FLUID_SYNTH.visualLatencyMs === 0 && ctx.outputLatency) {
+      // Base system latency + 50ms buffer
+      latencySecs = ctx.outputLatency + 0.05;
+    }
+    // Add FluidSynth ScriptProcessor buffer latency when active
+    if (isFluidReady() && !this._synthMuted) {
+      const fluidBufferLatency = (FLUID_SYNTH.bufferSize / ctx.sampleRate) * 2;
+      latencySecs += fluidBufferLatency;
+    }
 
     // External clock mode (YouTube): read directly from the audio element.
     // This is the single source of truth — no drift possible.
@@ -264,7 +295,8 @@ export class TabPlayer {
           console.log(`[getPlaybackTime] Using external clock: ${extTime.toFixed(3)}s`);
           this._loggedExtClockUsed = true;
         }
-        return extTime;
+        // Apply same latency compensation to external clock for consistent visual sync
+        return Math.max(0, extTime - latencySecs);
       }
       // External clock not ready yet (e.g. YouTube hasn't started),
       // fall through to AudioContext-based calculation
@@ -274,20 +306,13 @@ export class TabPlayer {
       }
     }
 
-    const ctx = getAudioContext();
-    const rawTime = (ctx.currentTime - this.startTime) * this.tempoScale;
-    
-    // Use browser's reported output latency if available, otherwise fall back to config
-    let latencySecs = FLUID_SYNTH.visualLatencyMs / 1000;
-    if (FLUID_SYNTH.visualLatencyMs === 0 && ctx.outputLatency) {
-      // Base system latency + 50ms buffer
-      latencySecs = ctx.outputLatency + 0.05;
-      
-      // Add FluidSynth ScriptProcessor buffer latency when active
-      if (isFluidReady()) {
-        const fluidBufferLatency = FLUID_SYNTH.bufferSize / ctx.sampleRate;
-        latencySecs += fluidBufferLatency;
-      }
+    if (this.state === 'stopped') return 0;
+
+    let rawTime;
+    if (this.state === 'paused') {
+      rawTime = this.timeline[this.currentIndex]?.time || 0;
+    } else {
+      rawTime = (ctx.currentTime - this.startTime) * this.tempoScale;
     }
     
     return Math.max(0, rawTime - latencySecs);
